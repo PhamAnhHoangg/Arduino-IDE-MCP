@@ -1,8 +1,8 @@
 {
   "name": "arduino",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Write, compile, upload, test and debug Arduino sketches on a real board from Claude (wraps arduino-cli).",
-  "author": { "name": "arduino-mcp contributors" },
+  "author": { "name": "PhamAnhHoangg" },
   "homepage": "https://github.com/PhamAnhHoangg/Arduino-IDE-MCP",
   "repository": "https://github.com/PhamAnhHoangg/Arduino-IDE-MCP",
   "license": "MIT",

@@ -299,11 +299,93 @@ def _fmt(items: list[dict], label: str) -> str:
     return "\n".join(lines)
 
 
+_DETECT = {"t": 0.0, "boards": []}
+
+
+def _detect_boards(max_age: float = 20.0) -> list[tuple[str, str, str]]:
+    """Recognised boards plugged in now: [(port, fqbn, name)]. Cached briefly."""
+    if time.time() - _DETECT["t"] < max_age:
+        return _DETECT["boards"]
+    _, out = _exec(["board", "list", "--format", "json"], 60)
+    found = []
+    try:
+        data = json.loads(out[out.index("{") if out.lstrip().startswith("{") else out.index("["):])
+        ports = data.get("detected_ports", []) if isinstance(data, dict) else data
+        for item in ports or []:
+            port = item.get("port", {})
+            for b in item.get("matching_boards") or []:
+                if port.get("protocol") == "serial" and b.get("fqbn"):
+                    found.append((port.get("address"), b["fqbn"], b.get("name", "")))
+                    break
+    except Exception:
+        pass
+    _DETECT.update(t=time.time(), boards=found)
+    return found
+
+
+def _sketch_yaml(sketch_dir: Path) -> dict:
+    yml = sketch_dir / "sketch.yaml"
+    if not yml.exists():
+        return {}
+    txt = yml.read_text(encoding="utf-8", errors="replace")
+    return {k: v.strip() for k, v in re.findall(r"^(default_fqbn|default_port):\s*(\S+)", txt, re.M)}
+
+
+class NeedInput(Exception):
+    """Auto-detect couldn't decide: Claude should ask the user one question."""
+
+
+def _resolve(port: str, fqbn: str, sketch_dir: Path | None, need_port: bool) -> tuple[str, str]:
+    """Fill in port/board automatically: given value > connected board >
+    sketch.yaml > default. Raises NeedInput when it can't decide."""
+    saved = _sketch_yaml(sketch_dir) if sketch_dir else {}
+    if fqbn and (port or not need_port):
+        return port, fqbn
+    boards = _detect_boards() if (need_port and not port) or not fqbn else []
+    if port and not fqbn:
+        match = [b for b in boards if b[0] == port]
+        return port, (match[0][1] if match else saved.get("default_fqbn", DEFAULT_FQBN))
+    if need_port and not port:
+        if fqbn:
+            boards = [b for b in boards if b[1] == fqbn] or boards
+        if len(boards) == 1:
+            _step(f"auto-picked {boards[0][2]} on {boards[0][0]}")
+            return boards[0][0], fqbn or boards[0][1]
+        if not boards:
+            raise NeedInput("NEED INPUT: no Arduino detected. Ask the user to plug it in with a "
+                            "data USB cable (or double-tap reset), then retry.")
+        raise NeedInput("NEED INPUT: several boards connected, ask the user which one: "
+                        + "; ".join(f"{n} on {p} ({f})" for p, f, n in boards))
+    # board only (no port needed): sketch.yaml, else a single connected board, else default
+    if saved.get("default_fqbn"):
+        return port, saved["default_fqbn"]
+    fq = {b[1] for b in boards}
+    return port, (fq.pop() if len(fq) == 1 else DEFAULT_FQBN)
+
+
+def _port_hint(out: str, port: str) -> str:
+    if re.search(r"cannot find the file|No such file or directory|FileNotFoundError", out):
+        return f"PORT NOT FOUND: {port} doesn't exist now. Unplugged? Run list_connected_boards."
+    if re.search(r"Access is denied|PermissionError|[Bb]usy|Resource busy", out):
+        return (f"PORT BUSY: something else has {port} open. Ask the user to close the Arduino IDE "
+                f"Serial Monitor/Plotter and any script (e.g. Python) using {port}, then retry.")
+    if "No device found" in out:
+        return (f"Board not found on {port} during upload. If another program has the port open, "
+                f"close it; else double-tap the board's reset button and retry.")
+    return "hint: check the port, close other programs using it, or double-tap reset."
+
+
 def _compile(sk: "Sketch", fqbn: str) -> tuple[bool, str]:
     sk.build.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    code, out = _exec(["compile", "--fqbn", fqbn, "--warnings", "all",
-                       "--build-path", str(sk.build), str(sk.dir)], 900)
+    cmd = ["compile", "--fqbn", fqbn, "--warnings", "all", "--build-path", str(sk.build), str(sk.dir)]
+    code, out = _exec(cmd, 900)
+    if code != 0 and re.search(r"[Pp]latform '?[\w-]+:[\w-]+'? (is )?not (found|installed)", out):
+        core = ":".join(fqbn.split(":")[:2])
+        _step(f"board package {core} missing, installing it")
+        _update_index()
+        if _exec(["core", "install", core], 900)[0] == 0:
+            code, out = _exec(cmd, 900)
     secs = time.time() - t0
     errors, warnings, usage = _parse_compile(out, sk)
     ok = code == 0
@@ -314,6 +396,14 @@ def _compile(sk: "Sketch", fqbn: str) -> tuple[bool, str]:
         parts.append(_fmt(errors[:8], "ERROR"))
     if warnings:
         parts.append(_fmt(warnings[:5], "WARNING"))
+    missing = re.findall(r"([\w.-]+)\.h: No such file or directory", out)
+    for h in sorted(set(missing))[:2]:
+        _, names = _exec(["lib", "search", h, "--names"], 120)
+        cands = re.findall(r'^Name: "([^"]+)"', names, re.M)[:5]
+        exact = [c for c in cands if c.replace(" ", "").lower() == h.lower()]
+        parts.append(f"MISSING LIBRARY for {h}.h: " + (f"install_library('{exact[0]}')" if exact
+                     else ("NEED INPUT: ask the user which to install: " + ", ".join(cands)) if cands
+                     else "no match in Library Manager; ask the user where this library comes from."))
     if not ok and not errors:  # a failure we couldn't parse: show raw tail
         parts.append(sk.fix_paths(out[-1200:]))
     return ok, "\n".join(parts)
@@ -586,8 +676,9 @@ def check_sketch(sketch_path: str = "", code: str = "", fqbn: str = "",
     Arduino IDE the first time so the user sees the code."""
     sk = Sketch(sketch_path, code)
     try:
+        _, fqbn = _resolve("", fqbn, sk.dir if not sk.tmp else None, need_port=False)
         ide = _open_in_ide(sk.ino, fqbn=fqbn) if show_in_ide else ""
-        ok, report = _compile(sk, fqbn or DEFAULT_FQBN)
+        ok, report = _compile(sk, fqbn)
         notes = _static_checks(sk.ino.read_text(encoding="utf-8", errors="replace"), fqbn)
         if notes:
             report += "\nLIKELY PROBLEMS:\n" + "\n".join(f"- {n}" for n in notes)
@@ -611,19 +702,25 @@ def _dedupe(log: str, limit: int = 1500) -> str:
 
 
 @tool
-def test_on_board(port: str, sketch_path: str = "", code: str = "", fqbn: str = "",
+def test_on_board(port: str = "", sketch_path: str = "", code: str = "", fqbn: str = "",
                   expect: list[str] | None = None, fail_on: list[str] | None = None,
                   send: list[str] | None = None, baud: int = 115200,
                   seconds: float = 8, upload: bool = True, show_in_ide: bool = True) -> str:
     """One call: write code -> compile -> upload -> Serial (send lines) ->
     PASS/FAIL. expect: text that must appear; fail_on: text meaning failure;
     send: lines to send; stops early once all expect seen. upload=False tests
-    what's on the board. Sketch should print markers (e.g. READY) repeatedly."""
+    what's on the board. port/fqbn: leave empty to auto-detect. Sketch should
+    print markers (e.g. READY) repeatedly."""
     expect, fail_on, send = expect or [], fail_on or [], send or []
-    board = fqbn or DEFAULT_FQBN
     head = []
+    sk = Sketch(sketch_path, code) if upload else None
+    try:
+        port, board = _resolve(port, fqbn, sk.dir if sk and not sk.tmp else None, need_port=True)
+    except NeedInput as e:
+        if sk:
+            sk.cleanup()
+        return str(e)
     if upload:
-        sk = Sketch(sketch_path, code)
         try:
             if show_in_ide:
                 ide = _open_in_ide(sk.ino, fqbn=board)
@@ -635,9 +732,7 @@ def test_on_board(port: str, sketch_path: str = "", code: str = "", fqbn: str = 
             c, out = _exec(["upload", "-p", port, "--fqbn", board,
                             "--input-dir", str(sk.build), str(sk.dir)], 300)
             if c != 0:
-                return ("RESULT: FAIL at upload\n" + out[-800:] +
-                        "\nhint: close Serial Monitor/other programs on the port, "
-                        "or double-tap reset and check the port.")
+                return "RESULT: FAIL at upload\n" + _port_hint(out, port) + "\n" + out[-400:]
             head.append(rep.splitlines()[0])
             if not sk.tmp:
                 _attach(sk.dir, board, port)  # IDE's Upload button then uses this port
@@ -652,7 +747,7 @@ def test_on_board(port: str, sketch_path: str = "", code: str = "", fqbn: str = 
     try:
         s = _open_serial(port, baud, retries=8 if upload else 0)
     except Exception as e:
-        return f"RESULT: FAIL at serial: can't open {port}: {e}"
+        return f"RESULT: FAIL at serial\n{_port_hint(str(e), port)}"
     _step(f"serial {port} @ {baud} opened")
     t0 = time.time()
     with s:
@@ -678,8 +773,12 @@ def test_on_board(port: str, sketch_path: str = "", code: str = "", fqbn: str = 
 
 
 @tool
-def serial(port: str, text: str = "", baud: int = 115200, seconds: float = 3) -> str:
-    """Send a line (optional) and read Serial output for a few seconds."""
+def serial(port: str = "", text: str = "", baud: int = 115200, seconds: float = 3) -> str:
+    """Send a line (optional) and read Serial for a few seconds. port: auto if empty."""
+    try:
+        port, _ = _resolve(port, "x", None, need_port=True)
+    except NeedInput as e:
+        return str(e)
     try:
         with _open_serial(port, baud) as s:
             _step(f"serial {port} @ {baud} opened")
@@ -691,7 +790,7 @@ def serial(port: str, text: str = "", baud: int = 115200, seconds: float = 3) ->
             _step(f"read {len(out)} chars, serial closed")
             return _dedupe(out) or "(nothing received)"
     except Exception as e:
-        return f"Can't open {port}: {e} (another program using it?)"
+        return _port_hint(str(e), port)
 
 
 @tool

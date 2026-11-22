@@ -59,6 +59,18 @@ default (see [Settings](#settings)).
 
 ---
 
+## It fills in the details itself
+
+You don't need to tell Claude the board or port. The tools:
+- **detect the plugged-in board and port** (`arduino-cli board list`) and use
+  them. If there are several boards, or none, Claude asks you one short
+  question instead of failing.
+- **remember the board and port** in the sketch's `sketch.yaml`, so Arduino
+  IDE opens with them selected too.
+- **install a missing board package** by themselves, then retry the compile.
+- **name the missing library**, and Claude asks you if there are several candidates.
+- **tell you what to close** when the port is busy (Serial Monitor, a Python script...).
+
 ## See what Claude is doing
 
 - **Your Arduino IDE shows the code.** The first time Claude checks or tests
@@ -263,6 +275,10 @@ This is an early version.
   and whether Arduino IDE always reloads a file changed by Claude.
 
 If you try it, please open an issue with what worked or broke.
+
+## Credits
+
+Built by PhamAnhHoangg with help from Claude, an AI assistant tool by Anthropic.
 
 ## License
 

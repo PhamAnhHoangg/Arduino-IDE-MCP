@@ -2,7 +2,7 @@
   "name": "arduino-ide-mcp",
   "description": "Arduino tools for Claude: compile, upload, test and debug sketches on a real board.",
   "owner": {
-    "name": "arduino-mcp contributors"
+    "name": "PhamAnhHoangg"
   },
   "plugins": [
     {
