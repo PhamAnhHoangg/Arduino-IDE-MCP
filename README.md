@@ -41,7 +41,7 @@ work too. Re-compiles are faster because each sketch keeps its build folder.
 
 | Tool | What it does |
 |---|---|
-| `check_sketch` | Compile + clear errors + extra checks. No board needed. |
+| `check_sketch` | Compile + clear errors + extra checks. No board needed. `guide=True` also opens a parts page (see below). |
 | `test_on_board` | Write, compile, upload, Serial test, PASS/FAIL in one call. Board and port auto-detected. |
 | `serial` | Send a line and/or read Serial output. |
 | `library` | Real functions of an installed library, list installed libraries, or search the Library Manager. |
@@ -69,6 +69,21 @@ You don't need to tell Claude the board or port. The tools:
 - **install a missing board package** by themselves, then retry the compile.
 - **name the missing library**, and Claude asks you if there are several candidates.
 - **tell you what to close** when the port is busy (Serial Monitor, a Python script...).
+
+## Parts page: what you need, how to wire it, where to buy it
+
+Ask "show me what I need for this sketch". `check_sketch` with `guide=True`
+writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
+- a **wiring diagram** (board ports and pins to each part),
+- a **parts checklist** and a **software checklist** (board package, libraries),
+- **where to buy** each part: search links for Amazon (pick your country),
+  AliExpress, eBay, the Arduino Store, price comparison and shops near you,
+- **similar projects** (Arduino Project Hub, Hackster, Instructables) and
+  **CAD / 3D-print models** (Printables, Thingiverse, GrabCAD).
+
+It is worked out from the code, so it knows the pins and ports, not the exact
+part you plugged in. Name a part with a comment like `// PART: SG90 servo -> SERVO1`.
+The shop links are searches, not checked prices or stock.
 
 ## See what Claude is doing
 
@@ -107,7 +122,7 @@ hybrid: the real work goes through arduino-cli (the same engine and the same
 installed boards and libraries as the IDE), and the IDE is used to *show*
 you the code and, when you ask, run Verify/Upload where you can see it.
 
-**Token use:** 7 tools whose definitions total about 670 tokens (down from
+**Token use:** 7 tools whose definitions total about 690 tokens (down from
 about 1,550 in v0.4), plus a short skill. Claude Code usually loads MCP tool
 details only when they're needed, so the fixed cost per conversation is
 mostly the tool names. Replies are compact: errors only, repeated Serial lines

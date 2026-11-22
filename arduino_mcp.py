@@ -1020,13 +1020,188 @@ def ide_button(action: str = "verify", sketch_name: str = "") -> str:
         "the board once in the IDE's board dropdown (it remembers it). Or use test_on_board.")
 
 
+# ---------------------------------------------------------------- parts + wiring page
+
+BOARD_NAMES = {"arduino:samd:nano_33_iot": "Arduino Nano 33 IoT", "arduino:avr:uno": "Arduino Uno",
+               "arduino:avr:mega": "Arduino Mega 2560", "arduino:avr:nano": "Arduino Nano"}
+BUILTIN_LIBS = {"Wire", "SPI", "EEPROM", "SoftwareSerial", "HID", "Keyboard", "Mouse", "Arduino"}
+
+
+def _plan(src: str, fqbn: str) -> dict:
+    """Work out parts, libraries and connections from the code. Lines like
+    `// PART: SG90 servo -> SERVO1` in the sketch add or rename parts."""
+    code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    nocomment = re.sub(r"//.*", "", code)
+    consts = dict(re.findall(r"(?:const\s+)?(?:int|byte|uint8_t|short)\s+(\w+)\s*=\s*(\w+)\s*;", nocomment))
+    consts.update(re.findall(r"#define\s+(\w+)\s+(\w+)", nocomment))
+    pin = lambda x: consts.get(x, x)
+    board = BOARD_NAMES.get(fqbn, fqbn)
+    libs = sorted(set(re.findall(r'#include\s*[<"]([\w.-]+?)\.h[>"]', nocomment)))
+    parts, links = [(board, "the main board")], []
+    carrier = "ArduinoMotorCarrier" in libs
+    if carrier:
+        parts += [("Nano Motor Carrier", "board sits on top of it"),
+                  ("18650 Li-ion battery (charged)", "in the carrier's holder, carrier switch ON")]
+        links.append(("BATTERY", "18650 battery"))
+        for n in sorted(set(re.findall(r"\bservo([1-4])\.", nocomment))):
+            parts.append((f"Servo motor", f"SERVO {n} header (brown/black = GND side)"))
+            links.append((f"SERVO {n}", "Servo motor"))
+        for n in sorted(set(re.findall(r"\bM([1-4])\.", nocomment))):
+            parts.append((f"DC motor", f"screw terminal M{n}"))
+            links.append((f"M{n}", "DC motor"))
+        for n in sorted(set(re.findall(r"\bencoder([12])\.", nocomment))):
+            parts.append(("Motor encoder cable", f"ENCODER {n} header"))
+            links.append((f"ENC {n}", "Encoder"))
+    for obj, p in re.findall(r"(\w+)\.attach\(\s*(\w+)", nocomment):
+        parts.append(("Servo motor", f"signal to pin {pin(p)}, red to 5V, brown to GND"))
+        links.append((f"D{pin(p)}".replace("DA", "A"), "Servo"))
+    used = set()
+    for fn, p in re.findall(r"\b(pinMode|digitalWrite|analogWrite|digitalRead|analogRead)\s*\(\s*(\w+)", nocomment):
+        p = pin(p)
+        if p in ("LED_BUILTIN", "13") or p in used:
+            continue
+        used.add(p)
+        kind = {"analogRead": "analog sensor (e.g. potentiometer)", "digitalRead": "button / digital sensor",
+                "analogWrite": "LED or motor driver (PWM)"}.get(fn, "LED / output device")
+        label = p if str(p).startswith("A") else f"D{p}"
+        parts.append((kind[0].upper() + kind[1:], f"on pin {label} (check what you connected)"))
+        links.append((label, kind.split(" (")[0]))
+    if "LED_BUILTIN" in nocomment:
+        parts.append(("Built-in LED", "on the board, nothing to wire"))
+    if re.search(r"Serial\.begin", nocomment):
+        baud = (re.findall(r"Serial\.begin\s*\(\s*(\d+)", nocomment) or ["?"])[0]
+        parts.append(("USB data cable to the computer", f"Serial at {baud} baud"))
+        links.append(("USB", "Computer"))
+    for name, where in re.findall(r"//\s*PART:\s*(.+?)\s*->\s*(.+)", src):  # user-declared parts win
+        name, where = name.strip(), where.strip()
+        key = where.upper().replace(" ", "")
+        links = [l for l in links if l[0].upper().replace(" ", "") != key]
+        parts = [pt for pt in parts if not re.search(rf"\b{re.escape(where)}\b|pin {re.escape(where.lstrip('Dd'))}\b", pt[1])]
+        parts.append((name, where))
+        links.append((where, name))
+    core = ":".join(fqbn.split(":")[:2])
+    software = [f"Board package {core}", "Arduino IDE 2 or arduino-cli"] + \
+               [f"Library: {l}" for l in libs if l not in BUILTIN_LIBS]
+    return {"board": board, "parts": parts, "links": links, "software": software, "libs": libs}
+
+
+SKIP_BUY = ("Built-in LED", "USB data cable to the computer")
+
+
+def _shop_html(plan: dict) -> str:
+    """Search links only (no scraping): where to buy, example projects, CAD models."""
+    import html
+    from urllib.parse import quote_plus as q
+    e = html.escape
+    a = lambda url, t: f'<a href="{e(url)}" target="_blank" rel="noopener">{t}</a>'
+    buy = []
+    for name, _ in dict.fromkeys((n, 0) for n, _ in plan["parts"]):
+        if name in SKIP_BUY:
+            continue
+        k = q(name.split(" (")[0] + ("" if "arduino" in name.lower() else " arduino"))
+        buy.append(f'<li><b>{e(name)}</b> <span>'
+                   + " · ".join([a(f"https://www.amazon.com/s?k={k}", "Amazon").replace('href="', 'class="amz" href="'),
+                                 a(f"https://www.aliexpress.com/wholesale?SearchText={k}", "AliExpress"),
+                                 a(f"https://www.ebay.com/sch/i.html?_nkw={k}", "eBay"),
+                                 a(f"https://www.google.com/search?q={k}+site%3Astore.arduino.cc", "Arduino Store"),
+                                 a(f"https://www.google.com/search?tbm=shop&q={k}", "compare prices")])
+                   + "</span></li>")
+    topic = " ".join(dict.fromkeys([plan["board"]] + [n.split(" (")[0] for n, _ in plan["parts"][1:4]
+                                                     if n not in SKIP_BUY]))
+    t = q(topic)
+    proj = " · ".join([a(f"https://projecthub.arduino.cc/search?q={t}", "Arduino Project Hub"),
+                       a(f"https://www.hackster.io/search?q={t}", "Hackster"),
+                       a(f"https://www.instructables.com/search/?q={t}", "Instructables")])
+    cad = " · ".join([a(f"https://www.printables.com/search/models?q={t}", "Printables"),
+                      a(f"https://www.thingiverse.com/search?q={t}", "Thingiverse"),
+                      a(f"https://grabcad.com/library?query={q(plan['board'])}", "GrabCAD (board 3D model)")])
+    regions = "".join(f'<option value="{d}">{d}</option>' for d in
+                      ("amazon.com", "amazon.de", "amazon.co.uk", "amazon.fr", "amazon.it", "amazon.es",
+                       "amazon.nl", "amazon.ca", "amazon.com.au", "amazon.co.jp", "amazon.in", "amazon.sg"))
+    return f"""<section><h2>Where to buy</h2><p class="sub">Amazon site: <select id="amz">{regions}</select>
+ · {a("https://www.google.com/maps/search/electronics+components+store", "electronics shops near me")}</p>
+<ul>{"".join(buy)}</ul></section>
+<section><h2>Ideas and 3D models</h2><ul><li><b>Similar projects</b> <span>{proj}</span></li>
+<li><b>CAD / 3D-print models</b> <span>{cad}</span></li></ul></section>
+<script>(function(){{var s=document.getElementById('amz'),k='arduino-mcp-amz';
+function set(d){{document.querySelectorAll('a.amz').forEach(function(x){{x.href=x.href.replace(/amazon\\.[a-z.]+/,d)}})}}
+try{{var v=localStorage.getItem(k);if(v){{s.value=v;set(v)}}}}catch(_){{}}
+s.onchange=function(){{set(s.value);try{{localStorage.setItem(k,s.value)}}catch(_){{}}}}}})()</script>"""
+
+
+def _guide_html(sketch: str, plan: dict) -> str:
+    import html
+    e = html.escape
+    links = plan["links"] or [("", "nothing wired")]
+    h = 40 + 56 * len(links)
+    rows = []
+    for i, (port, part) in enumerate(links):
+        y = 20 + i * 56
+        rows.append(f'<line x1="250" y1="{y+18}" x2="470" y2="{y+18}" class="w"/>'
+                    f'<circle cx="250" cy="{y+18}" r="4" class="d"/><circle cx="470" cy="{y+18}" r="4" class="d"/>'
+                    f'<rect x="470" y="{y}" width="250" height="36" rx="8" class="p"/>'
+                    f'<text x="485" y="{y+23}">{e(part)}</text>'
+                    f'<text x="262" y="{y+12}" class="l">{e(port)}</text>')
+    svg = (f'<svg viewBox="0 0 740 {h}" role="img" aria-label="wiring diagram">'
+           f'<rect x="20" y="10" width="230" height="{h-20}" rx="12" class="b"/>'
+           f'<text x="135" y="{h/2+5:.0f}" text-anchor="middle" class="bt">{e(plan["board"])}</text>'
+           + "".join(rows) + "</svg>")
+    li = lambda items: "".join(f'<li><label><input type="checkbox"> <b>{e(a)}</b> <span>{e(b)}</span></label></li>'
+                               for a, b in items)
+    sw = "".join(f'<li><label><input type="checkbox"> {e(x)}</label></li>' for x in plan["software"])
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(sketch)} parts</title><style>
+:root{{--bg:#fff;--fg:#1b1f24;--mut:#5b6470;--card:#f3f5f7;--acc:#00878f;--line:#9aa4ae}}
+@media (prefers-color-scheme:dark){{:root{{--bg:#16191d;--fg:#e8eaed;--mut:#a0a8b2;--card:#22272d;--acc:#2bb7bf;--line:#5d6670}}}}
+body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}}
+main{{max-width:820px;margin:auto;padding:24px 16px}} h1{{font-size:22px;margin:0 0 4px}}
+.sub{{color:var(--mut);margin:0 0 20px}} section{{background:var(--card);border-radius:12px;padding:16px;margin:14px 0}}
+h2{{font-size:16px;margin:0 0 8px}} ul{{list-style:none;padding:0;margin:0}} li{{padding:4px 0}}
+li span{{color:var(--mut)}} svg{{width:100%;height:auto}} .w{{stroke:var(--line);stroke-width:2}}
+.b{{fill:var(--acc)}} .bt{{fill:#fff;font-weight:600;font-size:15px}} .p{{fill:var(--bg);stroke:var(--line)}}
+text{{fill:var(--fg);font-size:13px}} .l{{fill:var(--acc);font-weight:600;font-size:12px}}
+.d{{fill:var(--acc)}} a{{color:var(--acc)}} select{{font:inherit}} .note{{color:var(--mut);font-size:13px}}</style></head><body><main>
+<h1>{e(sketch)}: what you need</h1><p class="sub">Generated from the sketch's code. Tick things off as you go.</p>
+<section><h2>Wiring</h2>{svg}</section>
+<section><h2>Parts</h2><ul>{li(plan["parts"])}</ul></section>
+<section><h2>Software</h2><ul>{sw}</ul></section>
+{_shop_html(plan)}
+<p class="note">Worked out from the code, so it knows which pins and ports are used, not which exact part you
+plugged in. Add a line like <code>// PART: SG90 servo -> SERVO1</code> to the sketch to name a part.
+Shop, project and CAD links are searches, not checked prices or stock.</p>
+</main></body></html>"""
+
+
+def _write_guide(sk: "Sketch", fqbn: str) -> str:
+    plan = _plan(sk.ino.read_text(encoding="utf-8", errors="replace"), fqbn)
+    out = sk.src_dir / f"{sk.ino.stem}_parts.html"
+    out.write_text(_guide_html(sk.ino.stem, plan), encoding="utf-8")
+    _step(f"wrote {out}")
+    try:
+        import webbrowser
+        webbrowser.open(out.as_uri())
+        _step("opened it in the browser")
+    except Exception:
+        pass
+    return f"PARTS PAGE: {out} ({len(plan['parts'])} parts, {len(plan['links'])} connections)"
+
+
 # ---------------------------------------------------------------- public tools
 # 7 small tools. Descriptions are kept short on purpose: they cost tokens.
 
 @tool
-def check_sketch(code: str = "", sketch_path: str = "", fqbn: str = "") -> str:
-    """Compile + check (no board). Pass code or sketch_path. Errors come with line, code, hint."""
-    return _check_sketch(sketch_path=sketch_path, code=code, fqbn=fqbn)
+def check_sketch(code: str = "", sketch_path: str = "", fqbn: str = "", guide: bool = False) -> str:
+    """Compile + check (no board). Pass code or sketch_path. Errors come with line, code, hint.
+    guide=True: also open a parts + wiring page for the user."""
+    out = _check_sketch(sketch_path=sketch_path, code=code, fqbn=fqbn)
+    if guide:
+        sk = Sketch(sketch_path) if sketch_path else Sketch(str(SCRATCH / "mcp_sketch" / "mcp_sketch.ino"))
+        try:
+            _, board = _resolve("", fqbn, sk.dir if not sk.tmp else None, need_port=False)
+            out += "\n" + _write_guide(sk, board)
+        finally:
+            sk.cleanup()
+    return out
 
 
 @tool
