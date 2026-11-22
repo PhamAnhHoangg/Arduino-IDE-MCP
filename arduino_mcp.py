@@ -91,7 +91,8 @@ def _find_cli() -> str:
         candidates.append(Path(base) / "Arduino CLI/arduino-cli.exe")  # winget / installer
     candidates.append(Path(local) / "Microsoft/WinGet/Links/arduino-cli.exe")
     candidates += [Path(x) for x in glob.glob(str(Path(local) / "Microsoft/WinGet/Packages/ArduinoSA.CLI*/arduino-cli.exe"))]
-    for base in pf + [local, str(Path(local) / "Programs")]:
+    drives = [f"{d}:/" for d in "CDEFG"] + [f"{d}:/arduino" for d in "CDEFG"]
+    for base in pf + [local, str(Path(local) / "Programs")] + drives:
         for ide in ("Arduino IDE", "arduino-ide"):
             candidates.append(Path(base) / ide / "resources/app/lib/backend/resources/arduino-cli.exe")
     candidates += [Path("/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli"),
@@ -518,7 +519,7 @@ def _open_in_ide(ino: Path, force: bool = False, fqbn: str = "") -> str:
     if str(ino) in _OPENED and not force:
         return ""
     try:
-        _attach(ino.parent, fqbn or DEFAULT_FQBN)  # so the IDE opens with the board selected
+        _attach(ino.parent, fqbn or DEFAULT_FQBN)  # for arduino-cli; Arduino IDE 2.3 ignores it
     except Exception:
         pass
     try:
@@ -805,15 +806,14 @@ def open_in_ide(sketch_path: str = "", code: str = "", fqbn: str = "") -> str:
         sk.cleanup()
 
 
-def _press_in_ide(keys: str, title_hint: str) -> str:
-    """Windows only: bring the Arduino IDE window to the front and press a
-    shortcut (Ctrl+R = Verify, Ctrl+U = Upload), as a person would.
-    Refuses to type if it can't confirm the IDE window is in front."""
-    if not sys.platform.startswith("win"):
-        return "Pressing IDE buttons is only supported on Windows for now."
+def _win():
     import ctypes
     from ctypes import wintypes
-    user32 = ctypes.windll.user32
+    return ctypes, wintypes, ctypes.windll.user32
+
+
+def _ide_windows() -> list[tuple[int, str]]:
+    ctypes, wintypes, user32 = _win()
     found = []
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -822,31 +822,203 @@ def _press_in_ide(keys: str, title_hint: str) -> str:
         if n and user32.IsWindowVisible(hwnd):
             buf = ctypes.create_unicode_buffer(n + 1)
             user32.GetWindowTextW(hwnd, buf, n + 1)
-            t = buf.value
-            if "Arduino IDE" in t:
-                found.append((hwnd, t))
+            if "Arduino IDE" in buf.value:
+                found.append((hwnd, buf.value))
         return True
     user32.EnumWindows(each, 0)
-    if not found:
-        return "No Arduino IDE window found. Open the sketch first (open_in_ide)."
-    match = [w for w in found if title_hint and title_hint.lower() in w[1].lower()] or found
-    hwnd, title = match[0]
-    VK_MENU, VK_CONTROL, UP = 0x12, 0x11, 0x0002
+    return found
+
+
+def _find_ide(title_hint: str = "", wait: float = 0) -> tuple[int, str] | None:
+    end = time.time() + wait
+    while True:
+        wins = _ide_windows()
+        if title_hint:  # IDE 2 titles look like "face_fan | Arduino IDE 2.3.11"
+            wins = [w for w in wins if w[1].lower().startswith(title_hint.lower() + " |")]
+        if wins or time.time() >= end:
+            return wins[0] if wins else None
+        time.sleep(0.5)
+
+
+def _focus(hwnd: int) -> bool:
+    """Bring one window to the front. Returns False if Windows refused."""
+    ctypes, wintypes, user32 = _win()
+    if user32.GetForegroundWindow() == hwnd:
+        return True
     user32.ShowWindow(hwnd, 9)  # restore if minimised
-    user32.keybd_event(VK_MENU, 0, 0, 0)  # Windows only lets us focus a window after a key event
+    user32.keybd_event(0x12, 0, 0, 0)  # Alt tap: Windows only allows focus change after input
     user32.SetForegroundWindow(hwnd)
-    user32.keybd_event(VK_MENU, 0, UP, 0)
+    user32.keybd_event(0x12, 0, 0x0002, 0)
     time.sleep(0.4)
-    if user32.GetForegroundWindow() != hwnd:
+    return user32.GetForegroundWindow() == hwnd
+
+
+def _chord(*vks: int):
+    _, _, user32 = _win()
+    for vk in vks:
+        user32.keybd_event(vk, 0, 0, 0)
+    for vk in reversed(vks):
+        user32.keybd_event(vk, 0, 0x0002, 0)
+
+
+def _set_clipboard(text: str) -> bool:
+    ctypes, wintypes, user32 = _win()
+    k32 = ctypes.windll.kernel32
+    k32.GlobalAlloc.restype = wintypes.HGLOBAL
+    k32.GlobalLock.restype = wintypes.LPVOID
+    k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    for _ in range(10):
+        if user32.OpenClipboard(None):
+            break
+        time.sleep(0.05)
+    else:
+        return False
+    try:
+        user32.EmptyClipboard()
+        data = text.encode("utf-16-le") + b"\0\0"
+        h = k32.GlobalAlloc(0x0002, len(data))
+        ctypes.memmove(k32.GlobalLock(h), data, len(data))
+        k32.GlobalUnlock(h)
+        return bool(user32.SetClipboardData(13, h))  # CF_UNICODETEXT
+    finally:
+        user32.CloseClipboard()
+
+
+def _get_clipboard() -> str | None:
+    ctypes, wintypes, user32 = _win()
+    k32 = ctypes.windll.kernel32
+    user32.GetClipboardData.restype = wintypes.HANDLE
+    k32.GlobalLock.restype = wintypes.LPVOID
+    k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    if not user32.OpenClipboard(None):
+        return None
+    try:
+        h = user32.GetClipboardData(13)
+        if not h:
+            return None
+        ptr = k32.GlobalLock(h)
+        try:
+            return ctypes.wstring_at(ptr)
+        finally:
+            k32.GlobalUnlock(h)
+    finally:
+        user32.CloseClipboard()
+
+
+def _click_editor(hwnd: int):
+    """Click once inside the code editor area of THAT window (top-middle of
+    the window, below the toolbar), so keystrokes go to the editor."""
+    ctypes, wintypes, user32 = _win()
+    r = wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(r))
+    x = r.left + int((r.right - r.left) * 0.55)
+    y = r.top + int((r.bottom - r.top) * 0.30)
+    old = wintypes.POINT()
+    user32.GetCursorPos(ctypes.byref(old))
+    user32.SetCursorPos(x, y)
+    user32.mouse_event(0x0002, 0, 0, 0, 0)  # left down
+    user32.mouse_event(0x0004, 0, 0, 0, 0)  # left up
+    time.sleep(0.15)
+    user32.SetCursorPos(old.x, old.y)
+
+
+def _norm(t: str) -> str:
+    return "\n".join(l.rstrip() for l in t.replace("\r\n", "\n").strip().split("\n"))
+
+
+def _press_in_ide(keys: str, title_hint: str) -> str:
+    """Windows only: bring the Arduino IDE window to the front and press a
+    shortcut (Ctrl+R = Verify, Ctrl+U = Upload), as a person would.
+    Refuses to type if it can't confirm the IDE window is in front."""
+    if not sys.platform.startswith("win"):
+        return "Pressing IDE buttons is only supported on Windows for now."
+    w = _find_ide(title_hint) or _find_ide()
+    if not w:
+        return "No Arduino IDE window found. Open the sketch first (open_in_ide)."
+    hwnd, title = w
+    if not _focus(hwnd):
         _step(f"REFUSED to press keys: could not bring '{title}' to the front")
         return f"Could not bring '{title}' to the front, so I didn't press anything. Click the IDE window and try again."
-    key = ord(keys.upper())
-    user32.keybd_event(VK_CONTROL, 0, 0, 0)
-    user32.keybd_event(key, 0, 0, 0)
-    user32.keybd_event(key, 0, UP, 0)
-    user32.keybd_event(VK_CONTROL, 0, UP, 0)
+    _chord(0x11, ord(keys.upper()))
     _step(f"pressed Ctrl+{keys.upper()} in '{title}'")
     return f"Pressed Ctrl+{keys.upper()} in '{title}'."
+
+
+@tool
+def type_in_ide(code: str, sketch_path: str = "", lines_per_step: int = 1,
+                delay: float = 0.05) -> str:
+    """Windows: put `code` into the sketch's open Arduino IDE editor where the
+    user can watch it appear line by line, then save (Ctrl+S) and check the
+    saved file matches. Keys go ONLY to that IDE window; it stops if the user
+    clicks away. sketch_path: the sketch (default: the mcp_sketch scratch)."""
+    if not sys.platform.startswith("win"):
+        return "type_in_ide only works on Windows. Use check_sketch(code=...) instead."
+    if not sketch_path:
+        scratch = SCRATCH / "mcp_sketch" / "mcp_sketch.ino"
+        if not scratch.exists():
+            scratch.parent.mkdir(parents=True, exist_ok=True)
+            scratch.write_text("", encoding="utf-8")
+        sketch_path = str(scratch)
+    sk = Sketch(sketch_path)  # does NOT write the code: the IDE will
+    try:
+        before = sk.ino.stat().st_mtime
+        name = sk.ino.stem
+        w = _find_ide(name)
+        if not w:
+            _open_in_ide(sk.ino, force=True)
+            w = _find_ide(name, wait=20)
+        if not w:
+            return f"No Arduino IDE window for '{name}' appeared. Open {sk.ino} in the IDE and retry."
+        hwnd, title = w
+        if not _focus(hwnd):
+            return f"Couldn't bring '{title}' to the front, so nothing was typed. Click it and retry."
+        saved_clip = _get_clipboard()
+        _click_editor(hwnd)
+        _chord(0x11, ord("A"))  # select all
+        time.sleep(0.1)
+        _chord(0x2E)  # Delete
+        _step(f"cleared editor in '{title}'")
+        lines = code.replace("\r\n", "\n").split("\n")
+        step = max(1, lines_per_step)
+        done = 0
+        _, _, user32 = _win()
+        for i in range(0, len(lines), step):
+            if user32.GetForegroundWindow() != hwnd:
+                _step(f"STOPPED after {done} lines: IDE window lost focus")
+                if saved_clip is not None:
+                    _set_clipboard(saved_clip)
+                return (f"STOPPED after {done}/{len(lines)} lines because the IDE window lost focus "
+                        f"(nothing was typed anywhere else). Ask the user not to click away, then retry.")
+            chunk = "\n".join(lines[i:i + step]) + ("\n" if i + step < len(lines) else "")
+            _set_clipboard(chunk)
+            _chord(0x11, ord("V"))  # paste is literal: no auto-indent / auto-close brackets
+            done += len(lines[i:i + step])
+            time.sleep(max(0.0, delay))
+        _step(f"typed {done} lines into '{title}'")
+        time.sleep(0.2)
+        _chord(0x11, ord("S"))
+        _step("pressed Ctrl+S")
+        if saved_clip is not None:
+            _set_clipboard(saved_clip)
+        time.sleep(1.5)
+        on_disk = sk.ino.read_text(encoding="utf-8", errors="replace")
+        if sk.ino.stat().st_mtime == before:
+            return ("NOT SAVED: the IDE didn't save the file, so the typing probably went to another "
+                    "part of the IDE. Nothing was typed outside the IDE. Retry, or use check_sketch(code=...).")
+        if _norm(on_disk) == _norm(code):
+            return f"TYPED OK: {done} lines in '{title}', saved, file matches."
+        _step("saved file did NOT match the code")
+        diff = next((f"line {n + 1}: IDE has {a!r}, expected {b!r}"
+                     for n, (a, b) in enumerate(zip(_norm(on_disk).split("\n"), _norm(code).split("\n")))
+                     if a != b), "different length")
+        return ("TYPED BUT MISMATCH: the saved file differs from the code (" + diff + "). "
+                "The click may have missed the editor. Fix: check_sketch(code=..., sketch_path=...) "
+                "writes the file directly and the IDE reloads it.")
+    finally:
+        sk.cleanup()
 
 
 @tool
@@ -858,8 +1030,8 @@ def ide_button(action: str = "verify", sketch_name: str = "") -> str:
     if a not in ("verify", "upload"):
         return "action must be 'verify' or 'upload'."
     return _press_in_ide("r" if a == "verify" else "u", sketch_name) + (
-        "\nIf the IDE says 'No board selected': close that IDE window and run open_in_ide "
-        "again (board is saved in sketch.yaml), or pick the board once in the IDE's board dropdown.")
+        "\nArduino IDE ignores sketch.yaml: if it says 'No board selected', the user must pick "
+        "the board once in the IDE's board dropdown (it remembers it). Or use test_on_board.")
 
 
 if __name__ == "__main__":

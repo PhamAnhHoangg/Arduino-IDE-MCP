@@ -9,5 +9,5 @@ Use the `arduino` tools. Be brief: don't repeat tool output back, report only th
 2. `check_sketch` (pass `code` or `sketch_path`). Fix every ERROR, repeat until COMPILE OK. Keep one sketch file per task so the user's Arduino IDE window shows each change.
 3. Leave `port` and `fqbn` empty: the tools auto-detect the board, install missing board packages, and save the board in sketch.yaml. If a reply starts with `NEED INPUT`, `PORT BUSY` or `MISSING LIBRARY`, ask the user that one short question (or tell them what to close), then retry. Don't guess.
 4. `test_on_board` with `expect` (and `send` if the sketch reads commands). Make the sketch print markers repeatedly (e.g. `READY` every second). On FAIL, fix and retry; stop after 5 tries and explain.
-5. If the user wants to see compile/upload in the IDE itself: `ide_button` (Windows), then confirm with `check_sketch` or `serial`.
+5. If the user wants to watch it in the IDE (Windows): `type_in_ide` puts the code into the open editor line by line and checks the save; `ide_button` presses Verify/Upload there. Confirm results with `check_sketch` or `serial`. Never use computer use / screenshots for this.
 6. Serial can't show motors moving: ask the user to confirm physical behaviour. Warn before uploading code that drives motors.

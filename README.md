@@ -45,6 +45,7 @@ work too. Re-compiles are faster because each sketch keeps its build folder.
 | `test_on_board` | Write, compile, upload, Serial test, PASS/FAIL in one call. |
 | `library_api` | Real functions of an installed library (or list installed libraries). |
 | `open_in_ide` | Show a sketch in the Arduino IDE window. |
+| `type_in_ide` | Put code into the open Arduino IDE editor line by line, save, and check it (Windows). |
 | `ide_button` | Press Verify or Upload in the open Arduino IDE (Windows). |
 | `serial` | Send a line and/or read Serial output. |
 | `list_connected_boards` | Plugged-in boards and their ports (`COM5`, `/dev/ttyACM0`...). |
@@ -65,8 +66,9 @@ You don't need to tell Claude the board or port. The tools:
 - **detect the plugged-in board and port** (`arduino-cli board list`) and use
   them. If there are several boards, or none, Claude asks you one short
   question instead of failing.
-- **remember the board and port** in the sketch's `sketch.yaml`, so Arduino
-  IDE opens with them selected too.
+- **remember the board and port** in the sketch's `sketch.yaml` for their own
+  compile/upload tools. (Arduino IDE ignores that file: pick the board once in
+  the IDE's board dropdown and it remembers it.)
 - **install a missing board package** by themselves, then retry the compile.
 - **name the missing library**, and Claude asks you if there are several candidates.
 - **tell you what to close** when the port is busy (Serial Monitor, a Python script...).
@@ -76,12 +78,19 @@ You don't need to tell Claude the board or port. The tools:
 - **Your Arduino IDE shows the code.** The first time Claude checks or tests
   a sketch, it opens it in Arduino IDE. Claude keeps writing to that same
   file, so the IDE window shows each change.
-- **The board is set for you.** Before opening a sketch, the server saves the
-  board (and, after the first upload, the port) in the sketch's `sketch.yaml`
-  with `arduino-cli board attach`. Arduino IDE 2 reads that file when it opens
-  the sketch. If the IDE still says "No board selected" (for example because
-  the sketch was already open), close that IDE window and ask Claude to open
-  it again, or pick the board once in the board dropdown.
+- **The board is set for the plugin's own tools.** The server saves the board
+  (and, after the first upload, the port) in the sketch's `sketch.yaml` with
+  `arduino-cli board attach`, so its compile/upload/test tools don't need you
+  to pick anything. **Arduino IDE 2.3 does not read that file** (tested), so
+  for the IDE's own Verify/Upload buttons pick the board once in the IDE's
+  board dropdown; the IDE remembers it for that sketch.
+- **Watch the code being written in the IDE (Windows).** `type_in_ide`
+  brings the sketch's Arduino IDE window to the front, clicks once in its
+  editor, clears it and puts the code in line by line (pasting each line, so
+  the IDE's auto-indent and auto-closing brackets can't mangle it). It sends
+  keys only while that IDE window is in front and stops if you click away. Then
+  it saves (Ctrl+S) and checks the saved file matches the code. It borrows the
+  clipboard while typing and puts your clipboard text back afterwards.
 - **Verify / Upload in the IDE, if you want to watch them.** `ide_button`
   brings the Arduino IDE window to the front and presses Ctrl+R (Verify) or
   Ctrl+U (Upload), like you would. It only presses keys if the IDE window is
@@ -101,7 +110,7 @@ hybrid: the real work goes through arduino-cli (the same engine and the same
 installed boards and libraries as the IDE), and the IDE is used to *show*
 you the code and, when you ask, run Verify/Upload where you can see it.
 
-**Token use:** 12 tools whose descriptions add about 1,800 tokens. Replies
+**Token use:** 13 tools whose descriptions add about 1,800 tokens. Replies
 are compact: errors only, repeated Serial lines collapsed (`READY (x12)`),
 and long paths shortened. A typical check, fix and test loop costs a few
 thousand tokens.
