@@ -11,3 +11,4 @@ Use the `arduino` tools. Be brief: report results, don't repeat tool output.
 4. Replies starting `NEED INPUT`, `PORT BUSY`, `MISSING LIBRARY`: ask the user that one thing.
 5. User wants to watch in Arduino IDE: `ide` type/verify/upload. Never use screenshots/computer use.
 6. Serial can't show motors moving: ask the user. Warn before uploading code that drives motors.
+7. User asks what parts, wiring, where to buy or CAD: `check_sketch` with guide=True.
