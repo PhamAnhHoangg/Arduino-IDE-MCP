@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "arduino": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["C:\\path\\to\\arduino-mcp\\arduino_mcp.py"]
+    }
+  }
+}
