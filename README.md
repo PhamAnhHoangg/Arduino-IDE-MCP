@@ -74,8 +74,9 @@ You don't need to tell Claude the board or port. The tools:
 
 Ask "show me what I need for this sketch". `check_sketch` with `guide=True`
 writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
-- a **wiring diagram** with a small drawing of each part, colour-coded wires
-  (power, signal, USB) and a one-line how-to on each wire,
+- a **blueprint-style wiring schematic** (board pins, a schematic symbol per
+  part, net names, GND symbols, title block, a one-line how-to on each wire),
+  also saved as `<sketch>_schematic.svg` so you can open it or drop it into a chat,
 - a **parts checklist**, a **tools you need** checklist (screwdriver, wire
   stripper, breadboard, jumper wires, resistors, charger, multimeter: only the
   ones the sketch needs) and a **software checklist** (board package, libraries),
@@ -83,6 +84,8 @@ writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
   AliExpress, eBay, the Arduino Store, price comparison and shops near you,
 - **similar projects** (Arduino Project Hub, Hackster, Instructables) and
   **CAD / 3D-print models** (Printables, Thingiverse, GrabCAD).
+
+![face fan schematic](docs/face_fan_schematic.png)
 
 It is worked out from the code, so it knows the pins and ports, not the exact
 part you plugged in. Name a part with a comment like `// PART: SG90 servo -> SERVO1`.

@@ -1193,29 +1193,79 @@ try{{var v=localStorage.getItem(k);if(v){{s.value=v;set(v)}}}}catch(_){{}}
 s.onchange=function(){{set(s.value);try{{localStorage.setItem(k,s.value)}}catch(_){{}}}}}})()</script>"""
 
 
+def _sym(kind: str, x: int, y: int) -> str:
+    """Schematic symbol whose left terminal is at (x, y). Returns SVG; right end at x+100."""
+    gnd = (f'<path d="M{x+100} {y}v18M{x+90} {y+18}h20M{x+94} {y+23}h12M{x+98} {y+28}h4"/>')
+    if kind == "battery":
+        return (f'<path d="M{x} {y}h40M{x+40} {y-18}v36M{x+50} {y-9}v18M{x+50} {y}h50"/>'
+                f'<text x="{x+28}" y="{y-22}" class="v">+</text>' + gnd)
+    if kind in ("motor", "servo"):
+        extra = (f'<path d="M{x+8} {y+6}l8 -12"/><text x="{x+14}" y="{y+18}" class="v">3</text>'
+                 if kind == "servo" else "")
+        return (f'<path d="M{x} {y}h30M{x+74} {y}h26"/><circle cx="{x+52}" cy="{y}" r="22"/>'
+                f'<text x="{x+52}" y="{y+6}" text-anchor="middle" class="m">M</text>' + extra + gnd)
+    if kind == "led":
+        return (f'<path d="M{x} {y}h38M{x+38} {y-14}v28l24 -14zM{x+62} {y-14}v28M{x+62} {y}h38'
+                f'M{x+52} {y-18}l8 -10M{x+60} {y-20}l8 -10"/>' + gnd)
+    if kind == "sensor":
+        return (f'<path d="M{x} {y}h25l5 -10 10 20 10 -20 10 20 10 -20 5 10h25M{x+50} {y-28}v16'
+                f'M{x+45} {y-18}l5 6 5 -6"/>' + gnd)
+    if kind == "button":
+        return (f'<path d="M{x} {y}h35M{x+35} {y}l28 -14M{x+65} {y}h35"/><circle cx="{x+35}" cy="{y}" r="3"/>'
+                f'<circle cx="{x+65}" cy="{y}" r="3"/>' + gnd)
+    if kind in ("pc", "usb"):
+        return (f'<path d="M{x} {y}h20M{x+20} {y-16}h60v32h-60zM{x+80} {y}h20"/>'
+                f'<text x="{x+50}" y="{y+5}" text-anchor="middle" class="v">USB</text>')
+    return f'<path d="M{x} {y}h20M{x+20} {y-16}h60v32h-60zM{x+80} {y}h20"/>' + gnd
+
+
+def _schematic_svg(sketch: str, plan: dict) -> str:
+    """Blueprint-style schematic: the board as a block with its used pins, a symbol per part."""
+    import html, datetime
+    e = html.escape
+    links = plan["links"] or [("-", "nothing wired")]
+    W, top, step = 940, 90, 90
+    H = top + step * len(links) + 110
+    bh = step * len(links)
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
+           f'font-family="Consolas,Menlo,monospace" role="img" aria-label="schematic of {e(sketch)}">',
+           '<style>text{stroke:none}.s{fill:none;stroke:#e6f0ff;stroke-width:2}.t{fill:#e6f0ff;font-size:14px}'
+           '.v{fill:#e6f0ff;font-size:12px}.m{fill:#e6f0ff;font-size:20px;font-weight:700}'
+           '.n{fill:#ffd166;font-size:13px}.h{fill:#9cc3f5;font-size:11px}.ttl{fill:#e6f0ff;font-size:12px}</style>',
+           '<defs><pattern id="g" width="20" height="20" patternUnits="userSpaceOnUse">'
+           '<path d="M20 0H0V20" fill="none" stroke="#2f5e9e" stroke-width=".6"/></pattern></defs>',
+           f'<rect width="{W}" height="{H}" fill="#123a73"/><rect width="{W}" height="{H}" fill="url(#g)"/>',
+           f'<rect x="10" y="10" width="{W-20}" height="{H-20}" fill="none" stroke="#e6f0ff" stroke-width="1.5"/>',
+           f'<text x="30" y="44" class="t" font-size="18" style="font-size:18px;font-weight:700">'
+           f'{e(sketch.upper())} - WIRING SCHEMATIC</text>',
+           f'<g class="s"><rect x="60" y="{top-20}" width="200" height="{bh}"/></g>',
+           f'<text x="160" y="{top-28}" text-anchor="middle" class="t">U1 {e(plan["board"])}</text>']
+    for i, (port, part) in enumerate(links):
+        y = top + 25 + i * step
+        cls, hint = _wire_hint(port)
+        kind = next((v for k, v in ICON_WORDS if k in part.lower()), "part")
+        out.append(f'<text x="250" y="{y+4}" text-anchor="end" class="v">{e(port)}</text>'
+                   f'<g class="s"><path d="M260 {y}H520"/><circle cx="260" cy="{y}" r="3" fill="#e6f0ff"/>'
+                   f'{_sym(kind, 520, y)}</g>'
+                   f'<text x="280" y="{y-8}" class="n">{e(port.replace(" ", "_"))}</text>'
+                   f'<text x="280" y="{y+20}" class="h">{e(hint)}</text>'
+                   f'<text x="640" y="{y-4}" class="t">{e(part)}</text>'
+                   f'<text x="640" y="{y+14}" class="h">X{i+1}</text>')
+    ty = H - 70
+    out.append(f'<g class="s"><path d="M{W-420} {ty}h400v50h-400zM{W-420} {ty+25}h400M{W-200} {ty}v50"/></g>'
+               f'<text x="{W-410}" y="{ty+17}" class="ttl">PROJECT: {e(sketch)}</text>'
+               f'<text x="{W-190}" y="{ty+17}" class="ttl">DATE: {datetime.date.today()}</text>'
+               f'<text x="{W-410}" y="{ty+42}" class="ttl">BOARD: {e(plan["board"])}</text>'
+               f'<text x="{W-190}" y="{ty+42}" class="ttl">FROM CODE, CHECK PARTS</text>'
+               f'<text x="30" y="{ty-16}" class="h">Yellow = net/port name. Each part\'s other side goes to GND '
+               f'(symbol). "3" = 3-wire cable.</text></svg>')
+    return "".join(out)
+
+
 def _guide_html(sketch: str, plan: dict) -> str:
     import html
     e = html.escape
-    links = plan["links"] or [("", "nothing wired")]
-    h = 40 + 70 * len(links)
-    rows = []
-    for i, (port, part) in enumerate(links):
-        y = 20 + i * 70
-        cls, hint = _wire_hint(port)
-        rows.append(f'<line x1="250" y1="{y+24}" x2="450" y2="{y+24}" class="w {cls}"/>'
-                    f'<circle cx="250" cy="{y+24}" r="5" class="d"/><circle cx="450" cy="{y+24}" r="5" class="d"/>'
-                    f'<text x="262" y="{y+16}" class="l">{e(port)}</text>'
-                    f'<text x="262" y="{y+42}" class="h">{e(hint)}</text>'
-                    f'<rect x="450" y="{y}" width="270" height="48" rx="10" class="p"/>'
-                    f'<g transform="translate(462 {y+10})" class="pi">{_icon(part)}</g>'
-                    f'<text x="500" y="{y+29}">{e(part)}</text>')
-    svg = (f'<svg viewBox="0 0 740 {h}" role="img" aria-label="wiring diagram">'
-           f'<rect x="20" y="10" width="230" height="{h-20}" rx="12" class="b"/>'
-           f'<g transform="translate(111 {h/2-40:.0f})" class="bi">{_icon("arduino", 48)}</g>'
-           f'<text x="135" y="{h/2+30:.0f}" text-anchor="middle" class="bt">{e(plan["board"])}</text>'
-           + "".join(rows) + "</svg>")
-    legend = ('<p class="lg"><i class="k pw"></i>power / motor <i class="k sg"></i>signal '
-              '<i class="k us"></i>USB to computer</p>')
+    svg = _schematic_svg(sketch, plan)
     li = lambda items: "".join(f'<li><label><input type="checkbox"> {_icon(a)} <span class="t"><b>{e(a)}</b> '
                                f'<span>{e(b)}</span></span></label></li>' for a, b in items)
     sw = "".join(f'<li><label><input type="checkbox"> {e(x)}</label></li>' for x in plan["software"])
@@ -1231,12 +1281,12 @@ li span span{{color:var(--mut)}} li label{{display:flex;gap:10px;align-items:cen
 .ic{{flex:none;color:var(--acc)}} .pi .ic{{color:var(--acc)}} .bi .ic{{color:#fff}} .h{{fill:var(--mut);font-size:11px}}
 .pw{{stroke:#d9534f}} .sg{{stroke:var(--acc)}} .us{{stroke:var(--line)}} .lg{{color:var(--mut);font-size:13px;margin:6px 0 0}}
 .k{{display:inline-block;width:18px;height:3px;margin:0 6px 3px 12px;background:var(--line)}} .k.pw{{background:#d9534f}}
-.k.sg{{background:var(--acc)}} svg:not(.ic){{width:100%;height:auto}} .w{{stroke-width:3}}
+.k.sg{{background:var(--acc)}} .sc svg{{width:100%;height:auto;border-radius:8px}} .w{{stroke-width:3}}
 .b{{fill:var(--acc)}} .bt{{fill:#fff;font-weight:600;font-size:15px}} .p{{fill:var(--bg);stroke:var(--line)}}
 text{{fill:var(--fg);font-size:13px}} .l{{fill:var(--acc);font-weight:600;font-size:12px}}
 .d{{fill:var(--acc)}} a{{color:var(--acc)}} select{{font:inherit}} .note{{color:var(--mut);font-size:13px}}</style></head><body><main>
 <h1>{e(sketch)}: what you need</h1><p class="sub">Generated from the sketch's code. Tick things off as you go.</p>
-<section><h2>Wiring</h2>{svg}{legend}</section>
+<section><h2>Wiring schematic</h2><div class="sc">{svg}</div></section>
 <section><h2>Parts</h2><ul>{li(plan["parts"])}</ul></section>
 <section><h2>Tools you need</h2><ul>{li(plan["tools"])}</ul></section>
 <section><h2>Software</h2><ul>{sw}</ul></section>
@@ -1251,6 +1301,7 @@ def _write_guide(sk: "Sketch", fqbn: str) -> str:
     plan = _plan(sk.ino.read_text(encoding="utf-8", errors="replace"), fqbn)
     out = sk.src_dir / f"{sk.ino.stem}_parts.html"
     out.write_text(_guide_html(sk.ino.stem, plan), encoding="utf-8")
+    (sk.src_dir / f"{sk.ino.stem}_schematic.svg").write_text(_schematic_svg(sk.ino.stem, plan), encoding="utf-8")
     _step(f"wrote {out}")
     try:
         import webbrowser
@@ -1258,7 +1309,7 @@ def _write_guide(sk: "Sketch", fqbn: str) -> str:
         _step("opened it in the browser")
     except Exception:
         pass
-    return f"PARTS PAGE: {out} ({len(plan['parts'])} parts, {len(plan['tools'])} tools, {len(plan['links'])} connections)"
+    return f"PARTS PAGE: {out} + {sk.ino.stem}_schematic.svg ({len(plan['parts'])} parts, {len(plan['tools'])} tools, {len(plan['links'])} connections)"
 
 
 # ---------------------------------------------------------------- public tools

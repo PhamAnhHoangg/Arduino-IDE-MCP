@@ -1,6 +1,6 @@
 {
   "name": "arduino",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Write, compile, upload, test and debug Arduino sketches on a real board from Claude (wraps arduino-cli).",
   "author": { "name": "PhamAnhHoangg" },
   "homepage": "https://github.com/PhamAnhHoangg/Arduino-IDE-MCP",
