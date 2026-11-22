@@ -63,8 +63,7 @@ SCRATCH = Path.home() / "Documents" / "arduino-mcp-sketches"
 
 mcp = FastMCP(
     "arduino",
-    instructions=("check_sketch until it compiles, then test_on_board with expect=[...]; "
-                  "on FAIL fix and retry. Use library_api instead of guessing library functions."),
+    instructions="check_sketch until it compiles, then test_on_board; on FAIL fix and retry.",
 )
 
 
@@ -541,7 +540,6 @@ def _open_in_ide(ino: Path, force: bool = False, fqbn: str = "") -> str:
 # ================================================================ tools
 # Kept few and with short descriptions: every tool description costs tokens.
 
-@tool
 def check_setup() -> str:
     """arduino-cli path/version and installed cores. Run first if anything fails."""
     try:
@@ -553,7 +551,6 @@ def check_setup() -> str:
     return f"{cli}\n{ver}\nDefault board: {DEFAULT_FQBN}\n{cores}"
 
 
-@tool
 def list_connected_boards() -> str:
     """Plugged-in boards: port (COM5...) and FQBN."""
     code, out = _exec(["board", "list", "--format", "json"], 60)
@@ -576,7 +573,6 @@ def list_connected_boards() -> str:
     return "\n".join(lines) or "No ports. Is it plugged in with a data USB cable?"
 
 
-@tool
 def search_boards(query: str) -> str:
     """Find a board's FQBN by name, e.g. 'mega'."""
     _, out = _exec(["board", "listall", query], 60)
@@ -595,7 +591,6 @@ def _update_index():
     stamp.touch()
 
 
-@tool
 def install_core(core: str = "arduino:samd") -> str:
     """Install board support. arduino:samd = Nano 33 IoT/MKR, arduino:avr = Uno/Mega."""
     _, out = _exec(["core", "list"], 60)
@@ -606,14 +601,12 @@ def install_core(core: str = "arduino:samd") -> str:
     return f"{core} installed." if c == 0 else "FAILED:\n" + out[-1500:]
 
 
-@tool
 def search_libraries(query: str) -> str:
     """Search Library Manager (names only)."""
     _, out = _exec(["lib", "search", query, "--names"], 120)
     return out[:1500]
 
 
-@tool
 def install_library(name: str) -> str:
     """Install a library by exact name, e.g. 'ArduinoMotorCarrier'."""
     _, out = _exec(["lib", "list"], 60)
@@ -623,7 +616,6 @@ def install_library(name: str) -> str:
     return f"{name} installed." if c == 0 else "FAILED:\n" + out[-1500:]
 
 
-@tool
 def library_api(library: str = "", filter: str = "") -> str:
     """Real function names/params from an installed library's .h files.
     Use before calling unfamiliar library functions. filter narrows output
@@ -668,8 +660,7 @@ def library_api(library: str = "", filter: str = "") -> str:
     return text[:5000] + ("\n...(cut, use filter)" if len(text) > 5000 else "")
 
 
-@tool
-def check_sketch(sketch_path: str = "", code: str = "", fqbn: str = "",
+def _check_sketch(sketch_path: str = "", code: str = "", fqbn: str = "",
                  show_in_ide: bool = True) -> str:
     """Compile + fact-check, no board needed. Errors come with line, code and
     hint. Pass sketch_path (.ino/folder) or code (full sketch; saved to
@@ -702,8 +693,7 @@ def _dedupe(log: str, limit: int = 1500) -> str:
     return ("...\n" + text[-limit:]) if len(text) > limit else text
 
 
-@tool
-def test_on_board(port: str = "", sketch_path: str = "", code: str = "", fqbn: str = "",
+def _test_on_board(port: str = "", sketch_path: str = "", code: str = "", fqbn: str = "",
                   expect: list[str] | None = None, fail_on: list[str] | None = None,
                   send: list[str] | None = None, baud: int = 115200,
                   seconds: float = 8, upload: bool = True, show_in_ide: bool = True) -> str:
@@ -773,8 +763,7 @@ def test_on_board(port: str = "", sketch_path: str = "", code: str = "", fqbn: s
     return "\n".join(head) + "\nSERIAL:\n" + (_dedupe(log) or "(nothing)")
 
 
-@tool
-def serial(port: str = "", text: str = "", baud: int = 115200, seconds: float = 3) -> str:
+def _serial(port: str = "", text: str = "", baud: int = 115200, seconds: float = 3) -> str:
     """Send a line (optional) and read Serial for a few seconds. port: auto if empty."""
     try:
         port, _ = _resolve(port, "x", None, need_port=True)
@@ -794,7 +783,6 @@ def serial(port: str = "", text: str = "", baud: int = 115200, seconds: float = 
         return _port_hint(str(e), port)
 
 
-@tool
 def open_in_ide(sketch_path: str = "", code: str = "", fqbn: str = "") -> str:
     """Show a sketch in the Arduino IDE window so the user can watch. Saves the
     board in sketch.yaml first so the IDE has it selected (if the sketch was
@@ -947,7 +935,6 @@ def _press_in_ide(keys: str, title_hint: str) -> str:
     return f"Pressed Ctrl+{keys.upper()} in '{title}'."
 
 
-@tool
 def type_in_ide(code: str, sketch_path: str = "", lines_per_step: int = 1,
                 delay: float = 0.05) -> str:
     """Windows: put `code` into the sketch's open Arduino IDE editor where the
@@ -1021,7 +1008,6 @@ def type_in_ide(code: str, sketch_path: str = "", lines_per_step: int = 1,
         sk.cleanup()
 
 
-@tool
 def ide_button(action: str = "verify", sketch_name: str = "") -> str:
     """Windows: press Verify (Ctrl+R) or Upload (Ctrl+U) in the open Arduino
     IDE so the user sees it run there. Uses the IDE's selected board/port.
@@ -1032,6 +1018,83 @@ def ide_button(action: str = "verify", sketch_name: str = "") -> str:
     return _press_in_ide("r" if a == "verify" else "u", sketch_name) + (
         "\nArduino IDE ignores sketch.yaml: if it says 'No board selected', the user must pick "
         "the board once in the IDE's board dropdown (it remembers it). Or use test_on_board.")
+
+
+# ---------------------------------------------------------------- public tools
+# 7 small tools. Descriptions are kept short on purpose: they cost tokens.
+
+@tool
+def check_sketch(code: str = "", sketch_path: str = "", fqbn: str = "") -> str:
+    """Compile + check (no board). Pass code or sketch_path. Errors come with line, code, hint."""
+    return _check_sketch(sketch_path=sketch_path, code=code, fqbn=fqbn)
+
+
+@tool
+def test_on_board(code: str = "", sketch_path: str = "", expect: list[str] = [],
+                  send: list[str] = [], fail_on: list[str] = [], upload: bool = True,
+                  port: str = "", fqbn: str = "", baud: int = 115200, seconds: float = 8) -> str:
+    """Compile, upload, send lines, read Serial -> PASS if all `expect` text seen.
+    Port/board auto-detected. Sketch should print markers (e.g. READY) repeatedly."""
+    return _test_on_board(port=port, sketch_path=sketch_path, code=code, fqbn=fqbn,
+                          expect=list(expect), fail_on=list(fail_on), send=list(send),
+                          baud=baud, seconds=seconds, upload=upload)
+
+
+@tool
+def serial(text: str = "", port: str = "", baud: int = 115200, seconds: float = 3) -> str:
+    """Send a line (optional) and read Serial output."""
+    return _serial(port=port, text=text, baud=baud, seconds=seconds)
+
+
+@tool
+def boards(search: str = "") -> str:
+    """No args: arduino-cli status + connected boards. search: find a board's FQBN."""
+    if search:
+        return search_boards(search)
+    return check_setup() + "\nConnected:\n" + list_connected_boards()
+
+
+@tool
+def install(name: str) -> str:
+    """Install a board core ('arduino:samd') or a library ('Servo')."""
+    return install_core(name) if re.fullmatch(r"[\w.-]+:[\w.-]+", name) else install_library(name)
+
+
+@tool
+def library(name: str = "", filter: str = "", search: str = "") -> str:
+    """Real functions of installed library `name` (filter narrows). search: find libraries.
+    No args: list installed. Use before calling unfamiliar library functions."""
+    return search_libraries(search) if search else library_api(name, filter)
+
+
+@tool
+def ide(action: str, code: str = "", sketch_path: str = "") -> str:
+    """Arduino IDE window (Windows), for the user to watch. action: open | type (put code
+    in the editor line by line, save, verify file) | verify | upload (press the IDE button;
+    needs board picked in IDE; can't read result)."""
+    a = action.lower().strip()
+    if a == "open":
+        return open_in_ide(sketch_path=sketch_path, code=code)
+    if a == "type":
+        return type_in_ide(code=code, sketch_path=sketch_path)
+    if a in ("verify", "upload"):
+        name = Path(sketch_path).stem if sketch_path else ""
+        return ide_button(action=a, sketch_name=name)
+    return "action must be open, type, verify or upload."
+
+
+def _strip_titles(o):
+    if isinstance(o, dict):
+        o.pop("title", None)
+        for v in o.values():
+            _strip_titles(v)
+    elif isinstance(o, list):
+        for v in o:
+            _strip_titles(v)
+
+
+for _t in mcp._tool_manager.list_tools():  # drop auto "title" fields: pure token waste
+    _strip_titles(_t.parameters)
 
 
 if __name__ == "__main__":
