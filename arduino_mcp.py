@@ -1193,73 +1193,87 @@ try{{var v=localStorage.getItem(k);if(v){{s.value=v;set(v)}}}}catch(_){{}}
 s.onchange=function(){{set(s.value);try{{localStorage.setItem(k,s.value)}}catch(_){{}}}}}})()</script>"""
 
 
-def _sym(kind: str, x: int, y: int) -> str:
-    """Schematic symbol whose left terminal is at (x, y). Returns SVG; right end at x+100."""
-    gnd = (f'<path d="M{x+100} {y}v18M{x+90} {y+18}h20M{x+94} {y+23}h12M{x+98} {y+28}h4"/>')
+def _dots(pts) -> str:
+    return "".join(f'<circle cx="{x}" cy="{y}" r="4.5" class="dot"/>' for x, y in pts)
+
+
+def _footprint(kind: str, x: int, y: int) -> str:
+    """Top-down outline of a part, PCB-drawing style. Its connection dot is at (x, y)."""
     if kind == "battery":
-        return (f'<path d="M{x} {y}h40M{x+40} {y-18}v36M{x+50} {y-9}v18M{x+50} {y}h50"/>'
-                f'<text x="{x+28}" y="{y-22}" class="v">+</text>' + gnd)
-    if kind in ("motor", "servo"):
-        extra = (f'<path d="M{x+8} {y+6}l8 -12"/><text x="{x+14}" y="{y+18}" class="v">3</text>'
-                 if kind == "servo" else "")
-        return (f'<path d="M{x} {y}h30M{x+74} {y}h26"/><circle cx="{x+52}" cy="{y}" r="22"/>'
-                f'<text x="{x+52}" y="{y+6}" text-anchor="middle" class="m">M</text>' + extra + gnd)
+        return (f'<rect x="{x}" y="{y-26}" width="170" height="52" rx="6"/>'
+                f'<rect x="{x+16}" y="{y-16}" width="138" height="32" rx="16"/>'
+                f'<text x="{x+30}" y="{y+6}" class="pin">+</text><text x="{x+136}" y="{y+6}" class="pin">-</text>'
+                + _dots([(x, y), (x+170, y)]))
+    if kind == "servo":
+        return (f'<rect x="{x+40}" y="{y-28}" width="120" height="56" rx="4"/>'
+                f'<rect x="{x+28}" y="{y-8}" width="12" height="16"/><rect x="{x+160}" y="{y-8}" width="12" height="16"/>'
+                f'<circle cx="{x+75}" cy="{y}" r="18"/><path d="M{x+75} {y}h60"/><circle cx="{x+75}" cy="{y}" r="5"/>'
+                f'<path d="M{x} {y-12}h28M{x} {y}h28M{x} {y+12}h28"/>' + _dots([(x, y-12), (x, y), (x, y+12)]))
+    if kind == "motor":
+        return (f'<circle cx="{x+80}" cy="{y}" r="40"/><circle cx="{x+80}" cy="{y}" r="10"/>'
+                f'<path d="M{x} {y-12}h40M{x} {y+12}h40"/>' + _dots([(x, y-12), (x, y+12), (x+80, y)]))
     if kind == "led":
-        return (f'<path d="M{x} {y}h38M{x+38} {y-14}v28l24 -14zM{x+62} {y-14}v28M{x+62} {y}h38'
-                f'M{x+52} {y-18}l8 -10M{x+60} {y-20}l8 -10"/>' + gnd)
+        return (f'<path d="M{x+60} {y-22}a22 22 0 1 1 0 44z"/><path d="M{x} {y-8}h60M{x} {y+8}h60"/>'
+                + _dots([(x, y-8), (x, y+8)]))
     if kind == "sensor":
-        return (f'<path d="M{x} {y}h25l5 -10 10 20 10 -20 10 20 10 -20 5 10h25M{x+50} {y-28}v16'
-                f'M{x+45} {y-18}l5 6 5 -6"/>' + gnd)
+        return (f'<circle cx="{x+70}" cy="{y}" r="32"/><path d="M{x+70} {y}l18 -18"/>'
+                f'<path d="M{x} {y-14}h38M{x} {y}h38M{x} {y+14}h38"/>' + _dots([(x, y-14), (x, y), (x, y+14)]))
     if kind == "button":
-        return (f'<path d="M{x} {y}h35M{x+35} {y}l28 -14M{x+65} {y}h35"/><circle cx="{x+35}" cy="{y}" r="3"/>'
-                f'<circle cx="{x+65}" cy="{y}" r="3"/>' + gnd)
+        return (f'<rect x="{x+20}" y="{y-28}" width="56" height="56" rx="4"/><circle cx="{x+48}" cy="{y}" r="16"/>'
+                + _dots([(x, y), (x+96, y)]) + f'<path d="M{x} {y}h20M{x+76} {y}h20"/>')
     if kind in ("pc", "usb"):
-        return (f'<path d="M{x} {y}h20M{x+20} {y-16}h60v32h-60zM{x+80} {y}h20"/>'
-                f'<text x="{x+50}" y="{y+5}" text-anchor="middle" class="v">USB</text>')
-    return f'<path d="M{x} {y}h20M{x+20} {y-16}h60v32h-60zM{x+80} {y}h20"/>' + gnd
+        return (f'<rect x="{x+30}" y="{y-40}" width="140" height="80" rx="6"/><rect x="{x+40}" y="{y-30}" width="120" height="56"/>'
+                f'<path d="M{x+15} {y+48}h170"/><rect x="{x}" y="{y-8}" width="30" height="16"/>' + _dots([(x, y)]))
+    return (f'<rect x="{x+20}" y="{y-30}" width="100" height="60" rx="3"/>'
+            + _dots([(x+30 + i*20, y-30) for i in range(5)] + [(x+30 + i*20, y+30) for i in range(5)]) + _dots([(x, y)]))
 
 
 def _schematic_svg(sketch: str, plan: dict) -> str:
-    """Blueprint-style schematic: the board as a block with its used pins, a symbol per part."""
-    import html, datetime
+    """Blueprint-style wiring drawing: top-down outlines, glowing pins, white wires, big labels."""
+    import html
     e = html.escape
     links = plan["links"] or [("-", "nothing wired")]
-    W, top, step = 940, 90, 90
-    H = top + step * len(links) + 110
-    bh = step * len(links)
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
-           f'font-family="Consolas,Menlo,monospace" role="img" aria-label="schematic of {e(sketch)}">',
-           '<style>text{stroke:none}.s{fill:none;stroke:#e6f0ff;stroke-width:2}.t{fill:#e6f0ff;font-size:14px}'
-           '.v{fill:#e6f0ff;font-size:12px}.m{fill:#e6f0ff;font-size:20px;font-weight:700}'
-           '.n{fill:#ffd166;font-size:13px}.h{fill:#9cc3f5;font-size:11px}.ttl{fill:#e6f0ff;font-size:12px}</style>',
-           '<defs><pattern id="g" width="20" height="20" patternUnits="userSpaceOnUse">'
-           '<path d="M20 0H0V20" fill="none" stroke="#2f5e9e" stroke-width=".6"/></pattern></defs>',
-           f'<rect width="{W}" height="{H}" fill="#123a73"/><rect width="{W}" height="{H}" fill="url(#g)"/>',
-           f'<rect x="10" y="10" width="{W-20}" height="{H-20}" fill="none" stroke="#e6f0ff" stroke-width="1.5"/>',
-           f'<text x="30" y="44" class="t" font-size="18" style="font-size:18px;font-weight:700">'
-           f'{e(sketch.upper())} - WIRING SCHEMATIC</text>',
-           f'<g class="s"><rect x="60" y="{top-20}" width="200" height="{bh}"/></g>',
-           f'<text x="160" y="{top-28}" text-anchor="middle" class="t">U1 {e(plan["board"])}</text>']
+    W, top, step = 1100, 130, 130
+    n = len(links)
+    H = top + step * n + 45
+    carrier = "Nano Motor Carrier" in " ".join(p for p, _ in plan["parts"])
+    bx, bw, by, bh = 60, 300, top - 40, step * n
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
+         f'font-family="Segoe UI,Arial,sans-serif" role="img" aria-label="wiring drawing of {e(sketch)}">',
+         '<style>.o{fill:none;stroke:#fff;stroke-width:2}.dot{fill:#fff;stroke:none;filter:url(#gl)}'
+         'text{fill:#fff;stroke:none}.ttl{font-size:30px;font-weight:700}.lbl{font-size:22px;font-weight:600}'
+         '.prt{font-size:20px;fill:#bfe3ff;font-weight:700}.hint{font-size:16px;fill:#cfe0ff}'
+         '.pin{font-size:18px;font-weight:700}.w{fill:none;stroke:#fff;stroke-width:3}</style>',
+         '<defs><filter id="gl" x="-2" y="-2" width="5" height="5"><feGaussianBlur stdDeviation="3" result="b"/>'
+         '<feFlood flood-color="#7fd0ff"/><feComposite in2="b" operator="in"/>'
+         '<feMerge><feMergeNode/><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>',
+         f'<rect width="{W}" height="{H}" fill="#3d4b78"/>',
+         f'<text x="40" y="60" class="ttl">{e(sketch)}: how to wire it</text>',
+         '<g class="o">']
+    # the board (and carrier) seen from above
+    o.append(f'<rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="10"/>')
+    nx, nw = (bx + 40, 110) if carrier else (bx + 30, 160)
+    o.append(f'<rect x="{nx}" y="{by+30}" width="{nw}" height="{bh-60}" rx="6"/>'
+             f'<rect x="{nx+nw/2-18}" y="{by+18}" width="36" height="22" rx="3"/>')
+    o.append('</g>')
+    rows = max(4, int((bh - 100) / 26))
+    o.append(_dots([(nx + 14, by + 60 + i*26) for i in range(rows)] + [(nx + nw - 14, by + 60 + i*26) for i in range(rows)]))
+    o.append(f'<text x="{nx+nw/2}" y="{by+bh-12}" text-anchor="middle" class="hint">{e(plan["board"])}</text>')
+    if carrier:
+        o.append(f'<text x="{bx+bw-12}" y="{by+bh-12}" text-anchor="end" class="hint">Motor Carrier</text>')
     for i, (port, part) in enumerate(links):
         y = top + 25 + i * step
-        cls, hint = _wire_hint(port)
+        _, hint = _wire_hint(port)
         kind = next((v for k, v in ICON_WORDS if k in part.lower()), "part")
-        out.append(f'<text x="250" y="{y+4}" text-anchor="end" class="v">{e(port)}</text>'
-                   f'<g class="s"><path d="M260 {y}H520"/><circle cx="260" cy="{y}" r="3" fill="#e6f0ff"/>'
-                   f'{_sym(kind, 520, y)}</g>'
-                   f'<text x="280" y="{y-8}" class="n">{e(port.replace(" ", "_"))}</text>'
-                   f'<text x="280" y="{y+20}" class="h">{e(hint)}</text>'
-                   f'<text x="640" y="{y-4}" class="t">{e(part)}</text>'
-                   f'<text x="640" y="{y+14}" class="h">X{i+1}</text>')
-    ty = H - 70
-    out.append(f'<g class="s"><path d="M{W-420} {ty}h400v50h-400zM{W-420} {ty+25}h400M{W-200} {ty}v50"/></g>'
-               f'<text x="{W-410}" y="{ty+17}" class="ttl">PROJECT: {e(sketch)}</text>'
-               f'<text x="{W-190}" y="{ty+17}" class="ttl">DATE: {datetime.date.today()}</text>'
-               f'<text x="{W-410}" y="{ty+42}" class="ttl">BOARD: {e(plan["board"])}</text>'
-               f'<text x="{W-190}" y="{ty+42}" class="ttl">FROM CODE, CHECK PARTS</text>'
-               f'<text x="30" y="{ty-16}" class="h">Yellow = net/port name. Each part\'s other side goes to GND '
-               f'(symbol). "3" = 3-wire cable.</text></svg>')
-    return "".join(out)
+        px = bx + bw
+        o.append(f'<text x="{px-16}" y="{y+7}" text-anchor="end" class="prt">{e(port)}</text>')
+        o.append(f'<path class="w" d="M{px} {y}H640"/>' + _dots([(px, y)]))
+        o.append(f'<g class="o">{_footprint(kind, 640, y)}</g>')
+        o.append(f'<text x="{px+24}" y="{y-14}" class="lbl">{e(part)}</text>'
+                 f'<text x="{px+24}" y="{y+30}" class="hint">{e(hint)}</text>')
+    o.append(f'<text x="40" y="{H-28}" class="hint">Worked out from the sketch code: check the real parts. '
+             f'Dots are pins; white lines are wires.</text></svg>')
+    return "".join(o)
 
 
 def _guide_html(sketch: str, plan: dict) -> str:

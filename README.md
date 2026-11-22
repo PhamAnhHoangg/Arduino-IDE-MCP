@@ -74,8 +74,8 @@ You don't need to tell Claude the board or port. The tools:
 
 Ask "show me what I need for this sketch". `check_sketch` with `guide=True`
 writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
-- a **blueprint-style wiring schematic** (board pins, a schematic symbol per
-  part, net names, GND symbols, title block, a one-line how-to on each wire),
+- a **blueprint-style wiring drawing** (top-down outlines of the board and each
+  part, glowing pins, white wires, big labels, a one-line how-to on each wire),
   also saved as `<sketch>_schematic.svg` so you can open it or drop it into a chat,
 - a **parts checklist**, a **tools you need** checklist (screwdriver, wire
   stripper, breadboard, jumper wires, resistors, charger, multimeter: only the
