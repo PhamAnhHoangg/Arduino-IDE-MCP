@@ -74,9 +74,12 @@ You don't need to tell Claude the board or port. The tools:
 
 Ask "show me what I need for this sketch". `check_sketch` with `guide=True`
 writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
-- a **blueprint-style wiring drawing** (top-down outlines of the board and each
-  part, glowing pins, white wires, big labels, a one-line how-to on each wire),
-  also saved as `<sketch>_schematic.svg` so you can open it or drop it into a chat,
+- a **blueprint-style wiring drawing**: the board seen from above with its real
+  header pins (Nano-size boards), the Motor Carrier's SERVO 1-4 / M1-M4 / battery
+  ports, and each wire running from the exact pin or port to the part (servo
+  signal/+5V/GND colours, motor + and -). Carrier port positions are approximate
+  (Arduino doesn't publish them), and other boards are drawn as a simple pin list.
+  It is also saved as `<sketch>_schematic.svg`,
 - a **parts checklist**, a **tools you need** checklist (screwdriver, wire
   stripper, breadboard, jumper wires, resistors, charger, multimeter: only the
   ones the sketch needs) and a **software checklist** (board package, libraries),
