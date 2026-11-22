@@ -52,13 +52,35 @@ work too. Re-compiles are faster because each sketch keeps its build folder.
 | `compile_sketch` / `upload_sketch` | Plain compile, or compile and upload. |
 | `serial_read` / `serial_send` | Watch Serial output, or send a line. |
 
+The plugin version also includes the `arduino-dev` skill, which tells Claude to work in this order.
+
 The default board is the **Arduino Nano 33 IoT** (`arduino:samd:nano_33_iot`).
 For any other board, just tell Claude which one ("use an Uno"), or change the
 default (see [Settings](#settings)).
 
 ---
 
-## Install (3 steps)
+## Install as a Claude plugin (easiest)
+
+You still need **Python 3.10+** and **arduino-cli** on your computer (step 1
+below). The plugin installs its two Python packages by itself on first start.
+
+**Claude Code:**
+```
+/plugin marketplace add PhamAnhHoangg/Arduino-IDE-MCP
+/plugin install arduino@arduino-ide-mcp
+```
+Restart Claude Code, then check `/mcp`. You should see `plugin:arduino:arduino`
+connected. The plugin also adds an `arduino-dev` skill that teaches Claude the
+check, fix, test loop.
+
+**Claude desktop app:** download
+[`dist/arduino.plugin`](dist/arduino.plugin) from this repo and upload it in
+the app's plugin settings (or drag it into a chat).
+
+On macOS/Linux, if `python` isn't found, edit `.mcp.json` to use `python3`.
+
+## Manual install (3 steps)
 
 You need **Python 3.10+** and **arduino-cli**.
 
@@ -191,6 +213,9 @@ This is an early version.
 
 **Tested** (Linux, Python `mcp` 1.x, through a real MCP client):
 - The server starts and all 15 tools load.
+- The plugin passes `claude plugin validate`, installs in Claude Code from the
+  marketplace, shows as connected in `claude mcp list`, and auto-installs its
+  Python packages into a fresh Python environment.
 - Compile-error parsing, hints and extra checks, using real `g++` compiler errors.
 - `library_api` against the real ArduinoMotorCarrier library source.
 - `test_on_board`, `serial_send` and `serial_read` against a **simulated** serial board
@@ -198,7 +223,7 @@ This is an early version.
 
 **Not tested yet:**
 - Real compiles with the Arduino toolchain, and real uploads to a board.
-- Windows and macOS.
+- Windows and macOS (including the plugin in the Claude desktop app).
 - Finding the arduino-cli bundled in Arduino IDE 2.
 
 If you try it, please open an issue with what worked or broke.

@@ -25,7 +25,35 @@ import tempfile
 import time
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+
+def _ensure_packages():
+    """First run as a plugin: install the two Python packages if missing.
+    pip output goes to stderr, because stdout is the MCP channel."""
+    try:
+        import mcp.server.fastmcp  # noqa: F401
+        import serial  # noqa: F401
+        return
+    except ImportError:
+        pass
+    req = Path(__file__).with_name("requirements.txt")
+    print("arduino-mcp: installing Python packages (first run only)...", file=sys.stderr)
+    for extra in ([], ["--user"]):
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", *extra, "-r", str(req)],
+                           stdout=sys.stderr, stderr=sys.stderr)
+        if r.returncode == 0:
+            import importlib, site
+            importlib.invalidate_caches()
+            if extra:
+                sys.path.append(site.getusersitepackages())
+            return
+    print(f"arduino-mcp: could not install packages. Run this yourself:\n"
+          f'  "{sys.executable}" -m pip install -r "{req}"', file=sys.stderr)
+    sys.exit(1)
+
+
+_ensure_packages()
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 DEFAULT_FQBN = os.environ.get("ARDUINO_FQBN", "arduino:samd:nano_33_iot")
 WORK = Path(tempfile.gettempdir()) / "arduino_mcp"
