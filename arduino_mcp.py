@@ -401,7 +401,22 @@ def _read_until(s, seconds: float, expect: list[str], fail_on: list[str], max_ch
 _OPENED: set[str] = set()
 
 
-def _open_in_ide(ino: Path, force: bool = False) -> str:
+def _attach(sketch_dir: Path, fqbn: str = "", port: str = "") -> None:
+    """Save board (and port) in the sketch's sketch.yaml via `arduino-cli board
+    attach`, so Arduino IDE and arduino-cli know the board without the user
+    picking it. Only writes when something is missing or changed."""
+    yml = sketch_dir / "sketch.yaml"
+    cur = yml.read_text(encoding="utf-8", errors="replace") if yml.exists() else ""
+    args = []
+    if fqbn and f"default_fqbn: {fqbn}" not in cur:
+        args += ["-b", fqbn]
+    if port and f"default_port: {port}" not in cur:
+        args += ["-p", port]
+    if args:
+        _exec(["board", "attach", *args, str(sketch_dir)], 60)
+
+
+def _open_in_ide(ino: Path, force: bool = False, fqbn: str = "") -> str:
     """Show the sketch in the Arduino IDE, once per sketch (later changes are
     written to the same file, and the IDE reloads it). Returns a status line."""
     if ino.parent.name != ino.stem:
@@ -412,6 +427,10 @@ def _open_in_ide(ino: Path, force: bool = False) -> str:
         return msg
     if str(ino) in _OPENED and not force:
         return ""
+    try:
+        _attach(ino.parent, fqbn or DEFAULT_FQBN)  # so the IDE opens with the board selected
+    except Exception:
+        pass
     try:
         if sys.platform.startswith("win"):
             os.startfile(str(ino))  # opens with the app .ino files are linked to (Arduino IDE)
@@ -567,7 +586,7 @@ def check_sketch(sketch_path: str = "", code: str = "", fqbn: str = "",
     Arduino IDE the first time so the user sees the code."""
     sk = Sketch(sketch_path, code)
     try:
-        ide = _open_in_ide(sk.ino) if show_in_ide else ""
+        ide = _open_in_ide(sk.ino, fqbn=fqbn) if show_in_ide else ""
         ok, report = _compile(sk, fqbn or DEFAULT_FQBN)
         notes = _static_checks(sk.ino.read_text(encoding="utf-8", errors="replace"), fqbn)
         if notes:
@@ -607,7 +626,7 @@ def test_on_board(port: str, sketch_path: str = "", code: str = "", fqbn: str = 
         sk = Sketch(sketch_path, code)
         try:
             if show_in_ide:
-                ide = _open_in_ide(sk.ino)
+                ide = _open_in_ide(sk.ino, fqbn=board)
                 if ide:
                     head.append(ide)
             ok, rep = _compile(sk, board)
@@ -620,6 +639,8 @@ def test_on_board(port: str, sketch_path: str = "", code: str = "", fqbn: str = 
                         "\nhint: close Serial Monitor/other programs on the port, "
                         "or double-tap reset and check the port.")
             head.append(rep.splitlines()[0])
+            if not sk.tmp:
+                _attach(sk.dir, board, port)  # IDE's Upload button then uses this port
         finally:
             sk.cleanup()
         time.sleep(1.0)
@@ -674,11 +695,13 @@ def serial(port: str, text: str = "", baud: int = 115200, seconds: float = 3) ->
 
 
 @tool
-def open_in_ide(sketch_path: str = "", code: str = "") -> str:
-    """Show a sketch in the Arduino IDE window so the user can watch."""
+def open_in_ide(sketch_path: str = "", code: str = "", fqbn: str = "") -> str:
+    """Show a sketch in the Arduino IDE window so the user can watch. Saves the
+    board in sketch.yaml first so the IDE has it selected (if the sketch was
+    already open, the user must close and reopen that window)."""
     sk = Sketch(sketch_path, code)
     try:
-        return _open_in_ide(sk.ino, force=True)
+        return _open_in_ide(sk.ino, force=True, fqbn=fqbn)
     finally:
         sk.cleanup()
 
@@ -735,7 +758,9 @@ def ide_button(action: str = "verify", sketch_name: str = "") -> str:
     a = action.lower().strip()
     if a not in ("verify", "upload"):
         return "action must be 'verify' or 'upload'."
-    return _press_in_ide("r" if a == "verify" else "u", sketch_name)
+    return _press_in_ide("r" if a == "verify" else "u", sketch_name) + (
+        "\nIf the IDE says 'No board selected': close that IDE window and run open_in_ide "
+        "again (board is saved in sketch.yaml), or pick the board once in the IDE's board dropdown.")
 
 
 if __name__ == "__main__":

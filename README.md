@@ -64,6 +64,12 @@ default (see [Settings](#settings)).
 - **Your Arduino IDE shows the code.** The first time Claude checks or tests
   a sketch, it opens it in Arduino IDE. Claude keeps writing to that same
   file, so the IDE window shows each change.
+- **The board is set for you.** Before opening a sketch, the server saves the
+  board (and, after the first upload, the port) in the sketch's `sketch.yaml`
+  with `arduino-cli board attach`. Arduino IDE 2 reads that file when it opens
+  the sketch. If the IDE still says "No board selected" (for example because
+  the sketch was already open), close that IDE window and ask Claude to open
+  it again, or pick the board once in the board dropdown.
 - **Verify / Upload in the IDE, if you want to watch them.** `ide_button`
   brings the Arduino IDE window to the front and presses Ctrl+R (Verify) or
   Ctrl+U (Upload), like you would. It only presses keys if the IDE window is
