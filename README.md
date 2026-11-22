@@ -41,16 +41,15 @@ work too. Re-compiles are faster because each sketch keeps its build folder.
 
 | Tool | What it does |
 |---|---|
-| `check_sketch` | Compile + clear errors + extra checks. No board needed. |
-| `test_on_board` | Compile, upload, Serial test, PASS/FAIL. |
-| `library_api` | Real functions of an installed library. |
-| `check_setup` | Which arduino-cli is used, and installed boards. Run first if something breaks. |
-| `list_connected_boards` / `list_serial_ports` | Plugged-in boards and their ports (`COM5`, `/dev/ttyACM0`...). |
-| `search_boards` | Find a board's ID (FQBN), e.g. "mega" gives `arduino:avr:mega`. |
-| `install_core` | Install board support, e.g. `arduino:avr` (Uno/Mega/Nano), `arduino:samd` (Nano 33 IoT, MKR). |
-| `search_libraries` / `install_library` / `list_installed_libraries` | Library Manager. |
-| `compile_sketch` / `upload_sketch` | Plain compile, or compile and upload. |
-| `serial_read` / `serial_send` | Watch Serial output, or send a line. |
+| `check_sketch` | Compile + clear errors + extra checks. No board needed. Opens the sketch in Arduino IDE. |
+| `test_on_board` | Write, compile, upload, Serial test, PASS/FAIL in one call. |
+| `library_api` | Real functions of an installed library (or list installed libraries). |
+| `open_in_ide` | Show a sketch in the Arduino IDE window. |
+| `ide_button` | Press Verify or Upload in the open Arduino IDE (Windows). |
+| `serial` | Send a line and/or read Serial output. |
+| `list_connected_boards` | Plugged-in boards and their ports (`COM5`, `/dev/ttyACM0`...). |
+| `check_setup` / `install_core` / `search_boards` | arduino-cli status, board support. |
+| `search_libraries` / `install_library` | Library Manager. |
 
 The plugin version also includes the `arduino-dev` skill, which tells Claude to work in this order.
 
@@ -59,6 +58,35 @@ For any other board, just tell Claude which one ("use an Uno"), or change the
 default (see [Settings](#settings)).
 
 ---
+
+## See what Claude is doing
+
+- **Your Arduino IDE shows the code.** The first time Claude checks or tests
+  a sketch, it opens it in Arduino IDE. Claude keeps writing to that same
+  file, so the IDE window shows each change.
+- **Verify / Upload in the IDE, if you want to watch them.** `ide_button`
+  brings the Arduino IDE window to the front and presses Ctrl+R (Verify) or
+  Ctrl+U (Upload), like you would. It only presses keys if the IDE window is
+  really in front. It can't read the IDE's result, so Claude confirms with a
+  normal check afterwards.
+- **Every reply says what ran:** a short `[did: ...]` line lists each
+  arduino-cli command, port and time. The full log is in
+  `Documents/arduino-mcp-sketches/arduino-mcp.log`.
+
+**Why not type the code into the IDE with the mouse and keyboard?** Claude
+can do that with computer use (screenshots plus clicks), like the "second
+cursor" MCPs for CAD apps. But each step needs a screenshot, which costs
+roughly 1,000 to 1,500 tokens and a few seconds. A compile, fix and upload
+loop would take minutes and use tens of thousands of tokens. Arduino IDE 2
+has no official API for other programs to drive it. So this server uses a
+hybrid: the real work goes through arduino-cli (the same engine and the same
+installed boards and libraries as the IDE), and the IDE is used to *show*
+you the code and, when you ask, run Verify/Upload where you can see it.
+
+**Token use:** 12 tools whose descriptions add about 1,800 tokens. Replies
+are compact: errors only, repeated Serial lines collapsed (`READY (x12)`),
+and long paths shortened. A typical check, fix and test loop costs a few
+thousand tokens.
 
 ## Install as a Claude plugin (easiest)
 
@@ -179,7 +207,7 @@ Optional environment variables. Add them with `-e` in `claude mcp add`, e.g.
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `ARDUINO_CLI` | Full path to `arduino-cli` if it isn't found automatically | PATH, then Arduino IDE 2 |
+| `ARDUINO_CLI` | Full path to `arduino-cli` if it isn't found automatically | PATH, `Program Files\Arduino CLI`, WinGet, Arduino IDE 2 |
 | `ARDUINO_FQBN` | Default board | `arduino:samd:nano_33_iot` |
 
 ---
@@ -212,19 +240,21 @@ Optional environment variables. Add them with `-e` in `claude mcp add`, e.g.
 This is an early version.
 
 **Tested** (Linux, Python `mcp` 1.x, through a real MCP client):
-- The server starts and all 15 tools load.
+- The server starts and all 12 tools load.
 - The plugin passes `claude plugin validate`, installs in Claude Code from the
   marketplace, shows as connected in `claude mcp list`, and auto-installs its
   Python packages into a fresh Python environment.
 - Compile-error parsing, hints and extra checks, using real `g++` compiler errors.
 - `library_api` against the real ArduinoMotorCarrier library source.
-- `test_on_board`, `serial_send` and `serial_read` against a **simulated** serial board
+- `test_on_board` and `serial` against a **simulated** serial board
   (PASS, FAIL, compile failure, send and reply).
 
 **Not tested yet:**
 - Real compiles with the Arduino toolchain, and real uploads to a board.
 - Windows and macOS (including the plugin in the Claude desktop app).
 - Finding the arduino-cli bundled in Arduino IDE 2.
+- `open_in_ide` and `ide_button` on a real Windows PC (Linux test machine has no IDE),
+  and whether Arduino IDE always reloads a file changed by Claude.
 
 If you try it, please open an issue with what worked or broke.
 

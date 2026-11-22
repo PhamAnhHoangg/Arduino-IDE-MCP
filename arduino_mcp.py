@@ -14,6 +14,8 @@ Settings (all optional, set as environment variables in the MCP config):
                  (the Nano 33 IoT from the Engineering Kit R2).
 """
 
+import functools
+import glob
 import hashlib
 import json
 import os
@@ -61,49 +63,102 @@ SCRATCH = Path.home() / "Documents" / "arduino-mcp-sketches"
 
 mcp = FastMCP(
     "arduino",
-    instructions=(
-        "Workflow for Arduino code: 1) check_sketch (fast, no board), "
-        "2) fix errors it reports and repeat until it says COMPILE OK, "
-        "3) test_on_board with expect=[...] to upload and verify Serial "
-        "output, 4) if FAIL, read the log, fix, and call test_on_board again. "
-        "Before using an unfamiliar library function, call library_api to "
-        "read the real installed header instead of guessing."
-    ),
+    instructions=("check_sketch until it compiles, then test_on_board with expect=[...]; "
+                  "on FAIL fix and retry. Use library_api instead of guessing library functions."),
 )
 
 
 # ================================================================ helpers
 
+_CLI = None
+
+
 def _find_cli() -> str:
-    """Find arduino-cli: env var, then PATH, then inside Arduino IDE 2."""
+    """Find arduino-cli: env var, PATH, standard installs, Arduino IDE 2."""
+    global _CLI
+    if _CLI:
+        return _CLI
     env = os.environ.get("ARDUINO_CLI")
     if env and Path(env).exists():
+        _CLI = env
         return env
     found = shutil.which("arduino-cli")
-    if found:
-        return found
-    candidates = []
-    for base in (os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
-        if base:
-            for ide in ("Arduino IDE", "Programs/Arduino IDE", "Programs/arduino-ide"):
-                candidates.append(Path(base) / ide / "resources/app/lib/backend/resources/arduino-cli.exe")
-    candidates.append(Path("/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli"))
+    candidates = [Path(found)] if found else []
+    pf = [os.environ.get("ProgramFiles") or "C:/Program Files",
+          os.environ.get("ProgramFiles(x86)") or "C:/Program Files (x86)"]
+    local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData/Local")
+    for base in pf:
+        candidates.append(Path(base) / "Arduino CLI/arduino-cli.exe")  # winget / installer
+    candidates.append(Path(local) / "Microsoft/WinGet/Links/arduino-cli.exe")
+    candidates += [Path(x) for x in glob.glob(str(Path(local) / "Microsoft/WinGet/Packages/ArduinoSA.CLI*/arduino-cli.exe"))]
+    for base in pf + [local, str(Path(local) / "Programs")]:
+        for ide in ("Arduino IDE", "arduino-ide"):
+            candidates.append(Path(base) / ide / "resources/app/lib/backend/resources/arduino-cli.exe")
+    candidates += [Path("/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli"),
+                   Path("/opt/homebrew/bin/arduino-cli"), Path("/usr/local/bin/arduino-cli"),
+                   Path.home() / "bin/arduino-cli", Path.home() / ".local/bin/arduino-cli"]
     for c in candidates:
         if c.exists():
-            return str(c)
+            _CLI = str(c)
+            return _CLI
     raise RuntimeError(
         "arduino-cli was not found. Install it (see README) or set ARDUINO_CLI "
-        "to the full path of arduino-cli.exe in your MCP config."
+        "to the full path of arduino-cli.exe in your MCP config. "
+        "If you installed it while Claude was open, restart Claude."
     )
+
+
+# ---- transparency: every tool reply ends with a list of exactly what was done,
+# and the same lines go to a log file you can open any time.
+LOG_FILE = SCRATCH / "arduino-mcp.log"
+_STEPS: list[str] = []
+
+
+def _short(text: str) -> str:
+    """Shorten absolute paths to their last part, to keep replies small."""
+    return re.sub(r"(?:[A-Za-z]:)?(?:[\\/][^\s'\"\\/]+){3,}[\\/]([^\\/\s'\"]+)", r"\1", text)
+
+
+def _step(text: str):
+    line = f"[{time.strftime('%H:%M:%S')}] {text}"
+    _STEPS.append(_short(text))
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def tool(fn):
+    """Register an MCP tool whose reply ends with a 'What I did' step list."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        _STEPS.clear()
+        with open(LOG_FILE, "a", encoding="utf-8") if LOG_FILE.parent.exists() else open(os.devnull, "w") as f:
+            f.write(f"\n[{time.strftime('%H:%M:%S')}] TOOL {fn.__name__} "
+                    f"{ {k: (f'<{len(v)} chars>' if k == 'code' and v else v) for k, v in kwargs.items()} }\n")
+        t0 = time.time()
+        try:
+            out = fn(*args, **kwargs)
+        except Exception as e:
+            _step(f"ERROR {type(e).__name__}: {e}")
+            out = f"ERROR: {e}"
+        steps = "; ".join(_STEPS)
+        return f"{out}\n[did: {steps}{'; ' if steps else ''}{time.time() - t0:.1f}s total]"
+    return mcp.tool()(wrapper)
 
 
 def _exec(args: list[str], timeout: int = 600) -> tuple[int, str]:
     cmd = [_find_cli(), *args]
+    t0 = time.time()
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
                            encoding="utf-8", errors="replace")
     except subprocess.TimeoutExpired:
+        _step(f"RAN arduino-cli {' '.join(args)}  -> TIMED OUT after {timeout}s")
         return -1, f"Timed out after {timeout}s"
+    _step(f"arduino-cli {' '.join(a for a in args if not a.startswith('--build-path') and a != '--warnings' and a != 'all')} -> {'ok' if p.returncode == 0 else 'exit ' + str(p.returncode)} {time.time() - t0:.1f}s")
     return p.returncode, ((p.stdout or "") + "\n" + (p.stderr or "")).strip()
 
 
@@ -127,7 +182,10 @@ class Sketch:
             else:
                 p = SCRATCH / "mcp_sketch" / "mcp_sketch.ino"
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(code, encoding="utf-8")
+            old = p.read_text(encoding="utf-8", errors="replace") if p.exists() else None
+            if old != code:
+                p.write_text(code, encoding="utf-8")
+                _step(f"wrote {len(code.splitlines())} lines to {p}")
             sketch_path = str(p)
         if not sketch_path:
             raise ValueError("Give sketch_path (a .ino file or folder) or code.")
@@ -178,10 +236,10 @@ DIAG = re.compile(r"^(?P<file>.+?):(?P<line>\d+):(?:(?P<col>\d+):)?\s*"
                   r"(?P<kind>fatal error|error|warning|note):\s*(?P<msg>.*)$")
 
 HINTS = [
-    (r"No such file or directory", "A library is missing. Run search_libraries with the header name, then install_library."),
-    (r"was not declared in this scope", "Name is unknown: typo, missing #include, or the variable is declared inside another function. Check spelling/case."),
-    (r"has no member named", "That function doesn't exist in this library/class. Call library_api to see the real function names."),
-    (r"no matching function for call", "Function exists but the arguments are wrong. Call library_api to see the real parameters."),
+    (r"No such file or directory", "Library missing: search_libraries, then install_library."),
+    (r"was not declared in this scope", "Unknown name: typo, missing #include, or declared in another function."),
+    (r"has no member named", "No such function: check library_api."),
+    (r"no matching function for call", "Wrong arguments: check library_api."),
     (r"expected .;.", "Missing semicolon, usually at the end of the line before."),
     (r"expected .\}.|expected declaration", "Braces { } don't match up."),
     (r"redefinition of", "Same name defined twice (maybe two .ino files in the folder)."),
@@ -249,16 +307,16 @@ def _compile(sk: "Sketch", fqbn: str) -> tuple[bool, str]:
     secs = time.time() - t0
     errors, warnings, usage = _parse_compile(out, sk)
     ok = code == 0
-    parts = [f"{'COMPILE OK' if ok else 'COMPILE FAILED'} ({secs:.0f}s, board {fqbn}, sketch {sk.ino})"]
-    if usage:
-        parts.append(usage)
+    mem = " ".join(re.findall(r"\((\d+%)\)", usage))
+    parts = [f"{'COMPILE OK' if ok else 'COMPILE FAILED'} {sk.ino.name} for {fqbn} in {secs:.0f}s"
+             + (f" (flash/RAM {mem})" if mem else "")]
     if errors:
-        parts.append(_fmt(errors, "ERROR"))
+        parts.append(_fmt(errors[:8], "ERROR"))
     if warnings:
-        parts.append(_fmt(warnings[:15], "WARNING"))
+        parts.append(_fmt(warnings[:5], "WARNING"))
     if not ok and not errors:  # a failure we couldn't parse: show raw tail
-        parts.append("Raw output:\n" + sk.fix_paths(out[-3000:]))
-    return ok, "\n\n".join(parts)
+        parts.append(sk.fix_paths(out[-1200:]))
+    return ok, "\n".join(parts)
 
 
 # ---- static checks (no board, no compiler): things the compiler won't catch
@@ -270,8 +328,8 @@ def _static_checks(src: str, fqbn: str) -> list[str]:
     begins = re.findall(r"Serial\.begin\s*\(\s*(\d+)", code)
     if re.search(r"Serial\.(print|println|write|read|available|parseInt)", code) and not begins:
         notes.append("Serial is used but Serial.begin(...) is never called in setup().")
-    if begins:
-        notes.append(f"Serial baud rate is {begins[0]}: use the same baud in serial_read / test_on_board.")
+    if begins and begins[0] != "115200":
+        notes.append(f"Serial baud is {begins[0]}: pass baud={begins[0]} to test_on_board/serial.")
     if re.search(r"while\s*\(\s*!\s*Serial\s*\)", code):
         notes.append("while(!Serial) waits for the computer: fine on USB, but the sketch freezes "
                      "on battery power with no USB connected.")
@@ -292,7 +350,7 @@ def _static_checks(src: str, fqbn: str) -> list[str]:
     return notes
 
 
-def _find_port(port: str, wait: float = 10.0) -> str:
+def _find_port(port: str, wait: float = 6.0) -> str:
     """After an upload the Nano 33 IoT resets and its USB port disappears
     for a moment (and on Windows can come back as a different COM number).
     Wait for it to come back."""
@@ -340,96 +398,134 @@ def _read_until(s, seconds: float, expect: list[str], fail_on: list[str], max_ch
     return buf.decode("utf-8", errors="replace")
 
 
-# ================================================================ tools
+_OPENED: set[str] = set()
 
-@mcp.tool()
+
+def _open_in_ide(ino: Path, force: bool = False) -> str:
+    """Show the sketch in the Arduino IDE, once per sketch (later changes are
+    written to the same file, and the IDE reloads it). Returns a status line."""
+    if ino.parent.name != ino.stem:
+        msg = (f"Not opened in Arduino IDE: the IDE would ask to MOVE {ino.name} into a new "
+               f"folder named '{ino.stem}'. Open it yourself if you want that, or use a "
+               f"sketch whose folder name matches the .ino name.")
+        _step("SKIPPED opening in Arduino IDE (folder name doesn't match .ino name)")
+        return msg
+    if str(ino) in _OPENED and not force:
+        return ""
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(str(ino))  # opens with the app .ino files are linked to (Arduino IDE)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-a", "Arduino IDE", str(ino)])
+        else:
+            subprocess.Popen(["xdg-open", str(ino)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        _OPENED.add(str(ino))  # don't retry on every call
+        _step(f"FAILED to open in Arduino IDE: {e}")
+        return f"Could not open Arduino IDE automatically ({e}). Open this file yourself: {ino}"
+    _OPENED.add(str(ino))
+    _step(f"opened {ino} in Arduino IDE")
+    return f"Opened in Arduino IDE: {ino}"
+
+
+# ================================================================ tools
+# Kept few and with short descriptions: every tool description costs tokens.
+
+@tool
 def check_setup() -> str:
-    """Show which arduino-cli is used, its version, and installed board cores.
-    Run this first if anything fails."""
+    """arduino-cli path/version and installed cores. Run first if anything fails."""
     try:
         cli = _find_cli()
     except RuntimeError as e:
         return str(e)
-    return (f"arduino-cli: {cli}\nDefault board (FQBN): {DEFAULT_FQBN}\n\n"
-            + _run(["version"], 30) + "\n\n" + _run(["core", "list"], 60))
+    _, ver = _exec(["version"], 30)
+    _, cores = _exec(["core", "list"], 60)
+    return f"{cli}\n{ver}\nDefault board: {DEFAULT_FQBN}\n{cores}"
 
 
-@mcp.tool()
+@tool
 def list_connected_boards() -> str:
-    """List boards/serial ports plugged in right now (port name like COM5,
-    and the board's FQBN when arduino-cli recognises it)."""
+    """Plugged-in boards: port (COM5...) and FQBN."""
     code, out = _exec(["board", "list", "--format", "json"], 60)
+    lines = []
     try:
         data = json.loads(out[out.index("{") if out.lstrip().startswith("{") else out.index("["):])
+        ports = data.get("detected_ports", []) if isinstance(data, dict) else data
+        for item in ports or []:
+            port = item.get("port", {})
+            if port.get("protocol") != "serial":
+                continue
+            boards = item.get("matching_boards") or []
+            name = ", ".join(f"{b.get('name')} ({b.get('fqbn')})" for b in boards) or "unknown board"
+            lines.append(f"{port.get('address')}  {name}")
     except Exception:
-        return out
-    ports = data.get("detected_ports", []) if isinstance(data, dict) else data
-    lines = []
-    for item in ports or []:
-        port = item.get("port", {})
-        boards = item.get("matching_boards") or []
-        name = ", ".join(f"{b.get('name')} ({b.get('fqbn')})" for b in boards) or "unknown board"
-        lines.append(f"{port.get('address')}  [{port.get('protocol_label', port.get('protocol'))}]  {name}")
-    return "\n".join(lines) or "No ports found. Is the board plugged in with a data USB cable?"
+        pass
+    if not lines:  # fall back to every serial port
+        from serial.tools import list_ports
+        lines = [f"{p.device}  {p.description}" for p in list_ports.comports()]
+    return "\n".join(lines) or "No ports. Is it plugged in with a data USB cable?"
 
 
-@mcp.tool()
-def list_serial_ports() -> str:
-    """List every serial port the computer sees (backup for when
-    list_connected_boards shows nothing)."""
-    from serial.tools import list_ports
-    ports = [f"{p.device}  {p.description}" for p in list_ports.comports()]
-    return "\n".join(ports) or "No serial ports found."
-
-
-@mcp.tool()
+@tool
 def search_boards(query: str) -> str:
-    """Find a board's FQBN by name, e.g. 'nano 33 iot' or 'mega'.
-    Only boards whose core is installed are listed."""
-    return _run(["board", "listall", query], 60)
+    """Find a board's FQBN by name, e.g. 'mega'."""
+    _, out = _exec(["board", "listall", query], 60)
+    return out[:2000]
 
 
-@mcp.tool()
-def install_core(core: str = "arduino:samd") -> str:
-    """Install a board package (core). arduino:samd = Nano 33 IoT,
-    arduino:avr = Uno/Mega/Nano. Can take a few minutes the first time."""
+def _update_index():
+    """Refresh board/library lists at most once a day (it's slow)."""
+    stamp = WORK / "index-updated"
+    if stamp.exists() and time.time() - stamp.stat().st_mtime < 86400:
+        _step("skipped index update (done in last 24 h)")
+        return
     _exec(["core", "update-index"], 300)
-    return _run(["core", "install", core], 900)
+    _exec(["lib", "update-index"], 300)
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.touch()
 
 
-@mcp.tool()
+@tool
+def install_core(core: str = "arduino:samd") -> str:
+    """Install board support. arduino:samd = Nano 33 IoT/MKR, arduino:avr = Uno/Mega."""
+    _, out = _exec(["core", "list"], 60)
+    if re.search(rf"^{re.escape(core)}\s", out, re.M):
+        return f"{core} already installed."
+    _update_index()
+    c, out = _exec(["core", "install", core], 900)
+    return f"{core} installed." if c == 0 else "FAILED:\n" + out[-1500:]
+
+
+@tool
 def search_libraries(query: str) -> str:
-    """Search the Arduino Library Manager, e.g. 'motor carrier' or a header
-    name from a 'No such file' error."""
-    out = _run(["lib", "search", query, "--omit-releases-details"], 120)
-    return out[:6000] + ("\n...(cut)" if len(out) > 6000 else "")
+    """Search Library Manager (names only)."""
+    _, out = _exec(["lib", "search", query, "--names"], 120)
+    return out[:1500]
 
 
-@mcp.tool()
+@tool
 def install_library(name: str) -> str:
-    """Install a library by its Library Manager name, e.g. 'ArduinoMotorCarrier'.
-    Dependencies are installed too."""
-    return _run(["lib", "install", name], 600)
+    """Install a library by exact name, e.g. 'ArduinoMotorCarrier'."""
+    _, out = _exec(["lib", "list"], 60)
+    if re.search(rf"^{re.escape(name)}\s", out, re.M):
+        return f"{name} already installed."
+    c, out = _exec(["lib", "install", name], 600)
+    return f"{name} installed." if c == 0 else "FAILED:\n" + out[-1500:]
 
 
-@mcp.tool()
-def list_installed_libraries() -> str:
-    """List libraries that are already installed."""
-    return _run(["lib", "list"], 60)
-
-
-@mcp.tool()
-def library_api(library: str, filter: str = "") -> str:
-    """Fact-check a library: read the REAL function names and parameters from
-    the installed library's header (.h) files, instead of guessing.
-    library = name as in list_installed_libraries (e.g. 'ArduinoMotorCarrier').
-    filter = optional word to narrow the output (e.g. 'setDuty')."""
+@tool
+def library_api(library: str = "", filter: str = "") -> str:
+    """Real function names/params from an installed library's .h files.
+    Use before calling unfamiliar library functions. filter narrows output
+    (e.g. 'setDuty'). library='' lists installed libraries."""
     code, out = _exec(["lib", "list", "--format", "json"], 60)
     try:
         data = json.loads(out[out.index("{") if out.lstrip().startswith("{") else out.index("["):])
     except Exception:
         return "Could not read the library list:\n" + out[-2000:]
     libs = data.get("installed_libraries", []) if isinstance(data, dict) else data
+    if not library:
+        return "Installed: " + ", ".join(sorted(f"{e.get('library', e).get('name', '')} {e.get('library', e).get('version', '')}" for e in libs))
     want = library.lower().replace(" ", "")
     match = None
     for entry in libs:
@@ -457,153 +553,189 @@ def library_api(library: str, filter: str = "") -> str:
                 found.append("  " + where + s.rstrip("{").strip())
         if found:
             lines.append(f"\n{h.relative_to(root)}:")
-            lines.extend(found[:120])
+            lines.extend(found[:60])
     text = "\n".join(lines)
-    return text[:12000] + ("\n...(cut, use filter)" if len(text) > 12000 else "")
+    return text[:5000] + ("\n...(cut, use filter)" if len(text) > 5000 else "")
 
 
-@mcp.tool()
-def check_sketch(sketch_path: str = "", code: str = "", fqbn: str = "") -> str:
-    """FAST check with no board needed: compiles the sketch and fact-checks it.
-    Returns each error/warning with file, line, the code on that line and a
-    plain-English hint, plus extra checks the compiler doesn't do (missing
-    Serial.begin, Motor Carrier ping, long delays...).
-    Give either sketch_path (.ino or folder) or code (full sketch text; it is
-    saved to sketch_path if given, else to Documents/arduino-mcp-sketches).
-    Fix every ERROR and call again until it says COMPILE OK."""
-    board = fqbn or DEFAULT_FQBN
+@tool
+def check_sketch(sketch_path: str = "", code: str = "", fqbn: str = "",
+                 show_in_ide: bool = True) -> str:
+    """Compile + fact-check, no board needed. Errors come with line, code and
+    hint. Pass sketch_path (.ino/folder) or code (full sketch; saved to
+    sketch_path, else Documents/arduino-mcp-sketches/mcp_sketch). Opens it in
+    Arduino IDE the first time so the user sees the code."""
     sk = Sketch(sketch_path, code)
     try:
-        ok, report = _compile(sk, board)
-        notes = _static_checks(sk.ino.read_text(encoding="utf-8", errors="replace"), board)
+        ide = _open_in_ide(sk.ino) if show_in_ide else ""
+        ok, report = _compile(sk, fqbn or DEFAULT_FQBN)
+        notes = _static_checks(sk.ino.read_text(encoding="utf-8", errors="replace"), fqbn)
         if notes:
-            report += "\n\nEXTRA CHECKS (not compiler errors, but likely problems):\n" + \
-                      "\n".join(f"- {n}" for n in notes)
-        report += ("\n\nNext: test_on_board to run it on the Arduino." if ok
-                   else "\n\nNext: fix the errors above and call check_sketch again.")
-        return report
+            report += "\nLIKELY PROBLEMS:\n" + "\n".join(f"- {n}" for n in notes)
+        return (ide + "\n" if ide else "") + report
     finally:
         sk.cleanup()
 
 
-@mcp.tool()
-def compile_sketch(sketch_path: str, fqbn: str = "") -> str:
-    """Compile (verify) a sketch. Same as check_sketch without the extra checks."""
-    sk = Sketch(sketch_path)
-    try:
-        return _compile(sk, fqbn or DEFAULT_FQBN)[1]
-    finally:
-        sk.cleanup()
+def _dedupe(log: str, limit: int = 1500) -> str:
+    """Collapse repeated lines ("READY x12") and keep the end, to save tokens."""
+    out, prev, n = [], None, 0
+    for line in log.strip().splitlines() + [None]:
+        if line == prev:
+            n += 1
+            continue
+        if prev is not None:
+            out.append(prev + (f"  (x{n})" if n > 1 else ""))
+        prev, n = line, 1
+    text = "\n".join(out)
+    return ("...\n" + text[-limit:]) if len(text) > limit else text
 
 
-@mcp.tool()
-def upload_sketch(sketch_path: str, port: str, fqbn: str = "") -> str:
-    """Compile and upload a sketch to the board on `port` (e.g. COM5; see
-    list_connected_boards). Close the Serial Monitor and any Python script
-    using the port first, or the upload fails with 'access denied'."""
-    sk = Sketch(sketch_path)
-    board = fqbn or DEFAULT_FQBN
-    try:
-        ok, report = _compile(sk, board)
-        if not ok:
-            return report
-        return report + "\n\n" + _run(["upload", "-p", port, "--fqbn", board,
-                                       "--input-dir", str(sk.build), str(sk.dir)], 300)
-    finally:
-        sk.cleanup()
-
-
-@mcp.tool()
+@tool
 def test_on_board(port: str, sketch_path: str = "", code: str = "", fqbn: str = "",
                   expect: list[str] | None = None, fail_on: list[str] | None = None,
                   send: list[str] | None = None, baud: int = 115200,
-                  seconds: float = 8, upload: bool = True) -> str:
-    """The full auto test in one call: compile -> upload -> open Serial ->
-    optionally send lines -> read output -> PASS/FAIL.
-      expect:  strings that must appear in Serial output (e.g. ["READY", "ok"])
-      fail_on: strings that mean failure (e.g. ["ERROR", "not found"])
-      send:    lines to send after connecting (e.g. ["50,80"]), one per 0.3 s
-      seconds: max time to listen (stops early when all expect strings seen)
-      upload=False tests the code already on the board.
-    Tip: make the sketch print a line like "READY" at the end of setup() and
-    results like "TEST ok" so they can be checked. Output printed in the first
-    ~second after reset can be missed while the USB port reconnects; printing
-    repeatedly, or in reply to a sent line, avoids that.
-    If it FAILS, read the log, fix the code and call this again."""
+                  seconds: float = 8, upload: bool = True, show_in_ide: bool = True) -> str:
+    """One call: write code -> compile -> upload -> Serial (send lines) ->
+    PASS/FAIL. expect: text that must appear; fail_on: text meaning failure;
+    send: lines to send; stops early once all expect seen. upload=False tests
+    what's on the board. Sketch should print markers (e.g. READY) repeatedly."""
     expect, fail_on, send = expect or [], fail_on or [], send or []
     board = fqbn or DEFAULT_FQBN
-    report = []
+    head = []
     if upload:
         sk = Sketch(sketch_path, code)
         try:
+            if show_in_ide:
+                ide = _open_in_ide(sk.ino)
+                if ide:
+                    head.append(ide)
             ok, rep = _compile(sk, board)
-            report.append(rep)
             if not ok:
-                return "RESULT: FAIL at compile\n\n" + "\n\n".join(report)
-            t0 = time.time()
+                return "RESULT: FAIL at compile\n" + rep
             c, out = _exec(["upload", "-p", port, "--fqbn", board,
                             "--input-dir", str(sk.build), str(sk.dir)], 300)
             if c != 0:
-                report.append("UPLOAD FAILED:\n" + out[-2500:] +
-                              "\n\nhint: close Serial Monitor / Python scripts on this port; "
-                              "or double-tap the Nano's reset button and retry; check the COM port.")
-                return "RESULT: FAIL at upload\n\n" + "\n\n".join(report)
-            report.append(f"UPLOAD OK ({time.time() - t0:.0f}s)")
+                return ("RESULT: FAIL at upload\n" + out[-800:] +
+                        "\nhint: close Serial Monitor/other programs on the port, "
+                        "or double-tap reset and check the port.")
+            head.append(rep.splitlines()[0])
         finally:
             sk.cleanup()
         time.sleep(1.0)
         new_port = _find_port(port)
         if new_port != port:
-            report.append(f"Board came back on {new_port} (was {port}).")
+            head.append(f"Board came back on {new_port} (was {port}).")
+            _step(f"port changed {port} -> {new_port}")
             port = new_port
     try:
         s = _open_serial(port, baud, retries=8 if upload else 0)
     except Exception as e:
-        report.append(f"Could not open {port}: {e}")
-        return "RESULT: FAIL at serial\n\n" + "\n\n".join(report)
+        return f"RESULT: FAIL at serial: can't open {port}: {e}"
+    _step(f"serial {port} @ {baud} opened")
+    t0 = time.time()
     with s:
         for line in send:
             s.write((line + "\n").encode())
             s.flush()
+            _step(f"sent {line!r}")
             time.sleep(0.3)
         log = _read_until(s, min(max(seconds, 0.5), 120), expect, fail_on)
+    _step(f"read {len(log)} chars in {time.time() - t0:.1f}s, serial closed")
     missing = [e for e in expect if e not in log]
     bad = [f for f in fail_on if f in log]
     if bad:
         verdict = f"FAIL: saw {bad}"
     elif missing:
         verdict = f"FAIL: never saw {missing}"
-    elif not expect and not log.strip():
-        verdict = "UNKNOWN: board printed nothing (no expect given)"
+    elif not log.strip():
+        verdict = "FAIL: board printed nothing" if expect else "UNKNOWN: board printed nothing"
     else:
-        verdict = "PASS" if expect else "RAN (no expect given, read the log yourself)"
-    report.append(f"SERIAL LOG ({port} @ {baud}, sent {send}):\n" + (log.strip() or "(nothing received)"))
-    return f"RESULT: {verdict}\n\n" + "\n\n".join(report)
+        verdict = "PASS" if expect else "RAN (no expect given)"
+    head.insert(0, f"RESULT: {verdict}")
+    return "\n".join(head) + "\nSERIAL:\n" + (_dedupe(log) or "(nothing)")
 
 
-@mcp.tool()
-def serial_read(port: str, baud: int = 115200, seconds: float = 5) -> str:
-    """Listen to the board's Serial output for a few seconds (max 60) and
-    return what it printed. Same as watching the Serial Monitor."""
+@tool
+def serial(port: str, text: str = "", baud: int = 115200, seconds: float = 3) -> str:
+    """Send a line (optional) and read Serial output for a few seconds."""
     try:
         with _open_serial(port, baud) as s:
-            return _read_until(s, min(max(seconds, 0.5), 60), [], []) or "(nothing received)"
+            _step(f"serial {port} @ {baud} opened")
+            if text:
+                s.write((text + "\n").encode())
+                s.flush()
+                _step(f"sent {text!r}")
+            out = _read_until(s, min(max(seconds, 0.5), 60), [], [])
+            _step(f"read {len(out)} chars, serial closed")
+            return _dedupe(out) or "(nothing received)"
     except Exception as e:
-        return f"Could not open {port}: {e} (is another program using it?)"
+        return f"Can't open {port}: {e} (another program using it?)"
 
 
-@mcp.tool()
-def serial_send(port: str, text: str, baud: int = 115200, read_seconds: float = 2,
-                add_newline: bool = True) -> str:
-    """Send text to the board over Serial (e.g. '50,80'),
-    then return whatever the board replies during read_seconds."""
+@tool
+def open_in_ide(sketch_path: str = "", code: str = "") -> str:
+    """Show a sketch in the Arduino IDE window so the user can watch."""
+    sk = Sketch(sketch_path, code)
     try:
-        with _open_serial(port, baud) as s:
-            s.write((text + ("\n" if add_newline else "")).encode())
-            s.flush()
-            return _read_until(s, min(max(read_seconds, 0), 60), [], []) or "(nothing received)"
-    except Exception as e:
-        return f"Could not open {port}: {e} (is another program using it?)"
+        return _open_in_ide(sk.ino, force=True)
+    finally:
+        sk.cleanup()
+
+
+def _press_in_ide(keys: str, title_hint: str) -> str:
+    """Windows only: bring the Arduino IDE window to the front and press a
+    shortcut (Ctrl+R = Verify, Ctrl+U = Upload), as a person would.
+    Refuses to type if it can't confirm the IDE window is in front."""
+    if not sys.platform.startswith("win"):
+        return "Pressing IDE buttons is only supported on Windows for now."
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(hwnd, _):
+        n = user32.GetWindowTextLengthW(hwnd)
+        if n and user32.IsWindowVisible(hwnd):
+            buf = ctypes.create_unicode_buffer(n + 1)
+            user32.GetWindowTextW(hwnd, buf, n + 1)
+            t = buf.value
+            if "Arduino IDE" in t:
+                found.append((hwnd, t))
+        return True
+    user32.EnumWindows(each, 0)
+    if not found:
+        return "No Arduino IDE window found. Open the sketch first (open_in_ide)."
+    match = [w for w in found if title_hint and title_hint.lower() in w[1].lower()] or found
+    hwnd, title = match[0]
+    VK_MENU, VK_CONTROL, UP = 0x12, 0x11, 0x0002
+    user32.ShowWindow(hwnd, 9)  # restore if minimised
+    user32.keybd_event(VK_MENU, 0, 0, 0)  # Windows only lets us focus a window after a key event
+    user32.SetForegroundWindow(hwnd)
+    user32.keybd_event(VK_MENU, 0, UP, 0)
+    time.sleep(0.4)
+    if user32.GetForegroundWindow() != hwnd:
+        _step(f"REFUSED to press keys: could not bring '{title}' to the front")
+        return f"Could not bring '{title}' to the front, so I didn't press anything. Click the IDE window and try again."
+    key = ord(keys.upper())
+    user32.keybd_event(VK_CONTROL, 0, 0, 0)
+    user32.keybd_event(key, 0, 0, 0)
+    user32.keybd_event(key, 0, UP, 0)
+    user32.keybd_event(VK_CONTROL, 0, UP, 0)
+    _step(f"pressed Ctrl+{keys.upper()} in '{title}'")
+    return f"Pressed Ctrl+{keys.upper()} in '{title}'."
+
+
+@tool
+def ide_button(action: str = "verify", sketch_name: str = "") -> str:
+    """Windows: press Verify (Ctrl+R) or Upload (Ctrl+U) in the open Arduino
+    IDE so the user sees it run there. Uses the IDE's selected board/port.
+    Can't read the IDE result: confirm with check_sketch or serial."""
+    a = action.lower().strip()
+    if a not in ("verify", "upload"):
+        return "action must be 'verify' or 'upload'."
+    return _press_in_ide("r" if a == "verify" else "u", sketch_name)
 
 
 if __name__ == "__main__":
