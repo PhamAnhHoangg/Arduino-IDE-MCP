@@ -1082,7 +1082,71 @@ def _plan(src: str, fqbn: str) -> dict:
     core = ":".join(fqbn.split(":")[:2])
     software = [f"Board package {core}", "Arduino IDE 2 or arduino-cli"] + \
                [f"Library: {l}" for l in libs if l not in BUILTIN_LIBS]
-    return {"board": board, "parts": parts, "links": links, "software": software, "libs": libs}
+    names = " ".join(n for n, _ in parts)
+    tools = []
+    if carrier and "DC motor" in names:
+        tools += [("Small flat screwdriver (2-2.5 mm)", "tightens the motor wires in screw terminals"),
+                  ("Wire stripper", "bare ~5 mm of each motor wire")]
+    if carrier:
+        tools.append(("18650 charger", "charge the battery before you start"))
+    if any(l[0][:1] in "DA" and l[0][1:2].isdigit() for l in links):
+        tools += [("Breadboard", "holds the parts while testing"),
+                  ("Jumper wires (male-male)", "board pin to part, and GND to GND")]
+    if "LED / output" in names or "LED or motor" in names:
+        tools.append(("220 ohm resistor per LED", "stops the LED burning out"))
+    tools.append(("Multimeter (optional)", "check battery voltage and wiring"))
+    return {"board": board, "parts": parts, "links": links, "software": software, "libs": libs, "tools": tools}
+
+
+ICONS = {  # tiny line drawings, 24x24, drawn with currentColor
+    "board": '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 7H2M4 11H2M4 15H2M20 7h2M20 11h2M20 15h2"/><rect x="9" y="8" width="6" height="6"/>',
+    "carrier": '<rect x="2" y="5" width="20" height="14" rx="2"/><rect x="7" y="8" width="10" height="5"/><path d="M5 19v2M9 19v2M15 19v2M19 19v2"/>',
+    "battery": '<rect x="2" y="8" width="18" height="8" rx="2"/><path d="M20 11h2v2h-2M6 12h4M8 10v4"/>',
+    "servo": '<rect x="3" y="9" width="14" height="10" rx="1"/><circle cx="8" cy="9" r="2.5"/><path d="M8 9l9-5M17 14h4"/>',
+    "motor": '<circle cx="11" cy="12" r="7"/><path d="M8 15V9l3 3 3-3v6M18 12h4"/>',
+    "led": '<path d="M7 14V9a5 5 0 0 1 10 0v5zM5 14h14M10 14v6M14 14v4"/>',
+    "sensor": '<circle cx="12" cy="11" r="7"/><path d="M12 11l4-4M8 18v3M12 18v3M16 18v3"/>',
+    "button": '<rect x="4" y="6" width="16" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+    "usb": '<rect x="7" y="2" width="10" height="9" rx="1"/><path d="M10 5h1M13 5h1M12 11v5M9 16h6v5H9z"/>',
+    "pc": '<rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/>',
+    "encoder": '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/>',
+    "screwdriver": '<path d="M14 3l7 7-3 3-7-7zM11 6l-8 8 2 2 3 3 8-8"/>',
+    "strip": '<path d="M4 4l8 8M4 20l8-8M12 12l8-4M12 12l8 4"/>',
+    "breadboard": '<rect x="2" y="5" width="20" height="14" rx="1"/><path d="M2 12h20M5 8h.1M8 8h.1M11 8h.1M14 8h.1M5 16h.1M8 16h.1M11 16h.1M14 16h.1" stroke-width="2.5"/>',
+    "wire": '<path d="M3 18c6 0 4-12 10-12s5 6 8 6"/><rect x="1" y="16" width="4" height="4"/><rect x="19" y="10" width="4" height="4"/>',
+    "resistor": '<path d="M2 12h4l2-4 3 8 3-8 3 8 2-4h3"/>',
+    "meter": '<rect x="5" y="2" width="14" height="20" rx="2"/><rect x="8" y="5" width="8" height="5"/><circle cx="12" cy="16" r="3"/>',
+    "charger": '<rect x="3" y="7" width="18" height="12" rx="2"/><path d="M13 9l-3 4h4l-3 4"/>',
+    "part": '<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3"/>',
+}
+ICON_WORDS = [("charger", "charger"), ("resistor", "resistor"), ("carrier", "carrier"), ("battery", "battery"), ("18650", "battery"),
+              ("servo", "servo"), ("motor", "motor"), ("led", "led"), ("sensor", "sensor"), ("potentiometer", "sensor"),
+              ("button", "button"), ("usb", "usb"), ("computer", "pc"), ("encoder", "encoder"),
+              ("screwdriver", "screwdriver"), ("stripper", "strip"), ("breadboard", "breadboard"),
+              ("jumper", "wire"), ("multimeter", "meter"), ("arduino", "board")]
+
+
+def _icon(name: str, size: int = 28) -> str:
+    n = name.lower()
+    key = next((v for k, v in ICON_WORDS if k in n), "part")
+    return (f'<svg class="ic" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{ICONS[key]}</svg>')
+
+
+def _wire_hint(port: str) -> tuple:
+    """(wire class, short how-to) for a connection label."""
+    p = port.upper().replace(" ", "")
+    if p == "BATTERY":
+        return "pw", "+ end to the + mark"
+    if p == "USB":
+        return "us", "data cable, not charge-only"
+    if p.startswith("SERVO"):
+        return "sg", "3-pin plug, brown wire = GND"
+    if re.match(r"M\d", p):
+        return "pw", "2 wires, swap them to reverse"
+    if p.startswith("ENC"):
+        return "sg", "encoder cable plug"
+    return "sg", "signal wire; also GND to GND"
 
 
 SKIP_BUY = ("Built-in LED", "USB data cable to the computer")
@@ -1133,21 +1197,27 @@ def _guide_html(sketch: str, plan: dict) -> str:
     import html
     e = html.escape
     links = plan["links"] or [("", "nothing wired")]
-    h = 40 + 56 * len(links)
+    h = 40 + 70 * len(links)
     rows = []
     for i, (port, part) in enumerate(links):
-        y = 20 + i * 56
-        rows.append(f'<line x1="250" y1="{y+18}" x2="470" y2="{y+18}" class="w"/>'
-                    f'<circle cx="250" cy="{y+18}" r="4" class="d"/><circle cx="470" cy="{y+18}" r="4" class="d"/>'
-                    f'<rect x="470" y="{y}" width="250" height="36" rx="8" class="p"/>'
-                    f'<text x="485" y="{y+23}">{e(part)}</text>'
-                    f'<text x="262" y="{y+12}" class="l">{e(port)}</text>')
+        y = 20 + i * 70
+        cls, hint = _wire_hint(port)
+        rows.append(f'<line x1="250" y1="{y+24}" x2="450" y2="{y+24}" class="w {cls}"/>'
+                    f'<circle cx="250" cy="{y+24}" r="5" class="d"/><circle cx="450" cy="{y+24}" r="5" class="d"/>'
+                    f'<text x="262" y="{y+16}" class="l">{e(port)}</text>'
+                    f'<text x="262" y="{y+42}" class="h">{e(hint)}</text>'
+                    f'<rect x="450" y="{y}" width="270" height="48" rx="10" class="p"/>'
+                    f'<g transform="translate(462 {y+10})" class="pi">{_icon(part)}</g>'
+                    f'<text x="500" y="{y+29}">{e(part)}</text>')
     svg = (f'<svg viewBox="0 0 740 {h}" role="img" aria-label="wiring diagram">'
            f'<rect x="20" y="10" width="230" height="{h-20}" rx="12" class="b"/>'
-           f'<text x="135" y="{h/2+5:.0f}" text-anchor="middle" class="bt">{e(plan["board"])}</text>'
+           f'<g transform="translate(111 {h/2-40:.0f})" class="bi">{_icon("arduino", 48)}</g>'
+           f'<text x="135" y="{h/2+30:.0f}" text-anchor="middle" class="bt">{e(plan["board"])}</text>'
            + "".join(rows) + "</svg>")
-    li = lambda items: "".join(f'<li><label><input type="checkbox"> <b>{e(a)}</b> <span>{e(b)}</span></label></li>'
-                               for a, b in items)
+    legend = ('<p class="lg"><i class="k pw"></i>power / motor <i class="k sg"></i>signal '
+              '<i class="k us"></i>USB to computer</p>')
+    li = lambda items: "".join(f'<li><label><input type="checkbox"> {_icon(a)} <span class="t"><b>{e(a)}</b> '
+                               f'<span>{e(b)}</span></span></label></li>' for a, b in items)
     sw = "".join(f'<li><label><input type="checkbox"> {e(x)}</label></li>' for x in plan["software"])
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(sketch)} parts</title><style>
@@ -1157,13 +1227,18 @@ body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans
 main{{max-width:820px;margin:auto;padding:24px 16px}} h1{{font-size:22px;margin:0 0 4px}}
 .sub{{color:var(--mut);margin:0 0 20px}} section{{background:var(--card);border-radius:12px;padding:16px;margin:14px 0}}
 h2{{font-size:16px;margin:0 0 8px}} ul{{list-style:none;padding:0;margin:0}} li{{padding:4px 0}}
-li span{{color:var(--mut)}} svg{{width:100%;height:auto}} .w{{stroke:var(--line);stroke-width:2}}
+li span span{{color:var(--mut)}} li label{{display:flex;gap:10px;align-items:center}}
+.ic{{flex:none;color:var(--acc)}} .pi .ic{{color:var(--acc)}} .bi .ic{{color:#fff}} .h{{fill:var(--mut);font-size:11px}}
+.pw{{stroke:#d9534f}} .sg{{stroke:var(--acc)}} .us{{stroke:var(--line)}} .lg{{color:var(--mut);font-size:13px;margin:6px 0 0}}
+.k{{display:inline-block;width:18px;height:3px;margin:0 6px 3px 12px;background:var(--line)}} .k.pw{{background:#d9534f}}
+.k.sg{{background:var(--acc)}} svg:not(.ic){{width:100%;height:auto}} .w{{stroke-width:3}}
 .b{{fill:var(--acc)}} .bt{{fill:#fff;font-weight:600;font-size:15px}} .p{{fill:var(--bg);stroke:var(--line)}}
 text{{fill:var(--fg);font-size:13px}} .l{{fill:var(--acc);font-weight:600;font-size:12px}}
 .d{{fill:var(--acc)}} a{{color:var(--acc)}} select{{font:inherit}} .note{{color:var(--mut);font-size:13px}}</style></head><body><main>
 <h1>{e(sketch)}: what you need</h1><p class="sub">Generated from the sketch's code. Tick things off as you go.</p>
-<section><h2>Wiring</h2>{svg}</section>
+<section><h2>Wiring</h2>{svg}{legend}</section>
 <section><h2>Parts</h2><ul>{li(plan["parts"])}</ul></section>
+<section><h2>Tools you need</h2><ul>{li(plan["tools"])}</ul></section>
 <section><h2>Software</h2><ul>{sw}</ul></section>
 {_shop_html(plan)}
 <p class="note">Worked out from the code, so it knows which pins and ports are used, not which exact part you
@@ -1183,7 +1258,7 @@ def _write_guide(sk: "Sketch", fqbn: str) -> str:
         _step("opened it in the browser")
     except Exception:
         pass
-    return f"PARTS PAGE: {out} ({len(plan['parts'])} parts, {len(plan['links'])} connections)"
+    return f"PARTS PAGE: {out} ({len(plan['parts'])} parts, {len(plan['tools'])} tools, {len(plan['links'])} connections)"
 
 
 # ---------------------------------------------------------------- public tools

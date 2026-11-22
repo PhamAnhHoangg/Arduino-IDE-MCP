@@ -74,8 +74,11 @@ You don't need to tell Claude the board or port. The tools:
 
 Ask "show me what I need for this sketch". `check_sketch` with `guide=True`
 writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
-- a **wiring diagram** (board ports and pins to each part),
-- a **parts checklist** and a **software checklist** (board package, libraries),
+- a **wiring diagram** with a small drawing of each part, colour-coded wires
+  (power, signal, USB) and a one-line how-to on each wire,
+- a **parts checklist**, a **tools you need** checklist (screwdriver, wire
+  stripper, breadboard, jumper wires, resistors, charger, multimeter: only the
+  ones the sketch needs) and a **software checklist** (board package, libraries),
 - **where to buy** each part: search links for Amazon (pick your country),
   AliExpress, eBay, the Arduino Store, price comparison and shops near you,
 - **similar projects** (Arduino Project Hub, Hackster, Instructables) and
