@@ -1,5 +1,9 @@
 # arduino-mcp
 
+[![CI](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/PhamAnhHoangg/Arduino-IDE-MCP?include_prereleases)](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Let Claude write, compile, upload, test and debug Arduino code on your real board.**
 
 An [MCP](https://modelcontextprotocol.io) server that wraps the official
@@ -201,7 +205,7 @@ connected. The plugin also adds an `arduino-dev` skill that teaches Claude the
 check, fix, test loop.
 
 **Claude desktop app:** download
-[`dist/arduino.plugin`](dist/arduino.plugin) from this repo and upload it in
+[`dist/arduino.plugin`](dist/arduino.plugin) from this repo (or from the latest [Release](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/releases)) and upload it in
 the app's plugin settings (or drag it into a chat).
 
 On macOS/Linux, if `python` isn't found, edit `.mcp.json` to use `python3`.
@@ -348,14 +352,31 @@ This is an early version.
 - `test_on_board` and `serial` against a **simulated** serial board
   (PASS, FAIL, compile failure, send and reply).
 
+**Tested on a real Windows PC** (Claude desktop app, Arduino IDE 2.3.11, arduino-cli 1.6.0):
+- Real compiles for the Nano 33 IoT and the Mega 2560, board and port auto-detection.
+- A real upload to a Nano 33 IoT, and the face fan running on a Mega 2560
+  ([see the project](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV)).
+- `ide open` and `ide type` (the code is typed into the Arduino IDE editor and saved).
+
 **Not tested yet:**
-- Real compiles with the Arduino toolchain, and real uploads to a board.
-- Windows and macOS (including the plugin in the Claude desktop app).
-- Finding the arduino-cli bundled in Arduino IDE 2.
-- `ide open` and `ide verify/upload` on a real Windows PC (Linux test machine has no IDE),
-  and whether Arduino IDE always reloads a file changed by Claude.
+- macOS.
+- Finding the arduino-cli bundled in Arduino IDE 2 (tested only with a separate arduino-cli).
+- Reading the result of `ide verify/upload` (the IDE button is pressed, the result isn't read).
 
 If you try it, please open an issue with what worked or broke.
+
+## Development
+
+```
+pip install -r requirements.txt pytest
+python -m pytest -q
+python scripts/build_plugin.py
+```
+
+GitHub Actions runs the tests on Windows, macOS and Linux, compiles the example
+sketches, and builds the plugin on every push. Pushing a tag like `v0.9.5`
+publishes a Release with `arduino.plugin` attached. See
+[CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits
 

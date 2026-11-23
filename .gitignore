@@ -6,3 +6,4 @@ venv/
 Thumbs.db
 .vscode/
 dist/*.zip
+.pytest_cache/
