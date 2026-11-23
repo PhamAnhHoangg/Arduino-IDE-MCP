@@ -22,5 +22,5 @@ python scripts/build_plugin.py      # rebuilds dist/arduino.plugin
 - Wiring pictures: colours only, no text labels on wires (they hide the hole).
 - Bump the version in `.claude-plugin/plugin.json` and add a line to
   `CHANGELOG.md`.
-- To publish a release, push a tag like `v0.9.5`. GitHub Actions runs the tests
-  and attaches `arduino.plugin` to the release.
+- To publish a release, just bump the version. When it reaches `main`, GitHub
+  Actions runs the tests and publishes a Release with `arduino.plugin` attached.

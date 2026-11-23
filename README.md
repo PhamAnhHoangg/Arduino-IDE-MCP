@@ -374,8 +374,8 @@ python scripts/build_plugin.py
 ```
 
 GitHub Actions runs the tests on Windows, macOS and Linux, compiles the example
-sketches, and builds the plugin on every push. Pushing a tag like `v0.9.5`
-publishes a Release with `arduino.plugin` attached. See
+sketches, and builds the plugin on every push. When the version in
+`.claude-plugin/plugin.json` changes, it publishes a Release with `arduino.plugin` attached. See
 [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits

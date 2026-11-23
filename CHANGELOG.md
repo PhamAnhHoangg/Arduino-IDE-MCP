@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.5
+- GitHub Actions: tests on Windows, macOS and Linux, example sketch compiles,
+  plugin build, and automatic Releases with `arduino.plugin` attached.
+- Tests, contributing guide, issue and PR templates.
+
 ## 0.9.4
 - Publishing rule in the skill: when Claude commits, pushes or publishes a project
   for you, you are the only author. Claude is credited only as an assist tool.
