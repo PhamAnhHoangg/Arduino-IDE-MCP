@@ -112,8 +112,9 @@ it step by step". `wiring_steps` writes
 
 Claude describes the build as parts plus steps. Wire ends are a breadboard hole
 (`j10`), a rail (`+top`, `-bot`, `-bot:13`), a board pin (`pin:10`, `pin:GND`),
-a part terminal (`servo.SIG`, `motor.1`) or a chip pin (`U1.3`, which picks a
-free hole in that pin's column). Boards: Mega and Uno (others are drawn as an Uno-size board).
+a part terminal (`servo.SIG`, `motor.1`), a chip pin (`U1.3`, which picks a
+free hole in that pin's column), the board's USB port (`usb`, to a `laptop` part's `pc.USB`)
+or a power module's battery socket (`power.jack+`, `power.jack-`). Boards: Mega and Uno (others are drawn as an Uno-size board).
 Example: [`examples/face_fan_wiring/spec.json`](examples/face_fan_wiring/spec.json).
 
 ![3D wiring steps](docs/wiring_steps.png)

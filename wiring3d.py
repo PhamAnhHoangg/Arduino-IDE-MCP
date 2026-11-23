@@ -78,6 +78,10 @@ class Scene:
         si = 0
         for p in parts:
             t = p.get("type", "generic")
+            if t == "laptop":
+                p["_xy"] = p.get("xy") or (70, 640)
+                self.term[f'{p["id"]}.USB'] = (p["_xy"][0] + 204, p["_xy"][1] + 146)
+                continue
             if t in ("servo", "motor", "battery9v", "generic", "sensor"):
                 p["_xy"] = p.get("xy") or slots[min(si, len(slots) - 1)]
                 si += 1
@@ -118,6 +122,10 @@ class Scene:
             c = int(m.group(3)) if m.group(3) else self._free_rail_col(key, other_x)
             self.used_rail_cols.add((key, c))
             return _col(c), RAIL[key], None
+        if s.lower() == "usb":
+            return 172, 945, None
+        if re.fullmatch(r"\w+\.jack[+-]?", s, re.I) and self.parts.get(s.split(".")[0], {}).get("type") == "power":
+            return (377 if not s.endswith("-") else 391), 268, None
         m = re.fullmatch(r"(?:pin|board):(.+)", s, re.I)
         if m:
             p = m.group(1).strip().upper().lstrip("D") if m.group(1).strip().upper() not in self.pin else m.group(1).strip().upper()
@@ -241,6 +249,14 @@ def _offboard(o, p):
     t = p["type"]
     x0, y0 = p["_xy"]
     lab = _e(p.get("label", ""))
+    if t == "laptop":
+        a(f'<g filter="url(#sh)"><rect x="{x0}" y="{y0}" width="200" height="130" rx="8" fill="#37474f"/>'
+          f'<rect x="{x0 + 10}" y="{y0 + 16}" width="180" height="104" rx="3" fill="#90caf9"/>'
+          f'<circle cx="{x0 + 100}" cy="{y0 + 8}" r="6" fill="#111" stroke="#4fc3f7" stroke-width="2"/>'
+          f'<path d="M{x0 - 15},{y0 + 130} h230 l-12,30 h-206 z" fill="#546e7a"/>'
+          f'<rect x="{x0 + 196}" y="{y0 + 140}" width="16" height="12" fill="#222"/>'
+          f'<text x="{x0 + 100}" y="{y0 + 75}" font-size="15" fill="#0d47a1" text-anchor="middle" font-weight="800">{lab or "laptop + webcam"}</text></g>')
+        return (x0 - 25, y0 - 15, 250, 190)
     if t == "servo":
         a(f'<g filter="url(#sh)"><rect x="{x0 - 30}" y="{y0 + 30}" width="190" height="110" rx="8" fill="#0d47a1"/>'
           f'<rect x="{x0 - 30}" y="{y0 + 10}" width="190" height="110" rx="8" fill="#1565c0"/>'
@@ -367,9 +383,15 @@ def build_html(title: str, board: str, parts: list, steps: list) -> str:
                 m = re.fullmatch(r"(?:pin|board):(.+)", str(e_).strip(), re.I)
                 if m:
                     used_pins.setdefault(m.group(1).strip().upper().lstrip("D") or m.group(1), i)
-            d = _wire_path(fx, fy, tx, ty, fy < 700 and ty < 700 and fx < 1300 and tx < 1300)
-            a(f'<g class="wire" data-step="{i}"><path d="{d}" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="13" transform="translate(0,9)" stroke-linecap="round"/>'
-              f'<path d="{d}" fill="none" stroke="{col}" stroke-width="9" stroke-linecap="round"/>'
+            usb = "usb" in (str(f).lower(), str(t).lower())
+            if usb:
+                d = f"M{fx},{fy} C{fx - 80},{fy} {tx + 60},{ty + 40} {tx},{ty}"
+                col = COLORS.get((w[2] if len(w) > 2 else "grey").lower(), "#90a4ae")
+            else:
+                d = _wire_path(fx, fy, tx, ty, fy < 700 and ty < 700 and fx < 1300 and tx < 1300)
+            sw = 16 if usb else 9
+            a(f'<g class="wire" data-step="{i}"><path d="{d}" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="{sw + 4}" transform="translate(0,9)" stroke-linecap="round"/>'
+              f'<path d="{d}" fill="none" stroke="{col}" stroke-width="{sw}" stroke-linecap="round"/>'
               f'<path d="{d}" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2" transform="translate(-1,-2)" stroke-linecap="round"/>'
               f'<circle cx="{fx}" cy="{fy}" r="8" fill="#ddd" stroke="{col}" stroke-width="3"/><circle cx="{tx}" cy="{ty}" r="8" fill="#ddd" stroke="{col}" stroke-width="3"/></g>')
             # no text tags on the scene: they hide the hole (user feedback). Colour is enough.

@@ -1482,8 +1482,9 @@ def wiring_steps(steps: list[dict], parts: list[dict] = [], board: str = "mega",
                  title: str = "Wiring", sketch_path: str = "") -> str:
     """Open a 3D step-by-step breadboard wiring page (Back/Next). steps: [{title, notes[],
     place[part ids], wires[[from,to,color]]}]. Ends: hole 'j10', rail '+top' '-bot' ('-bot:13'),
-    board 'pin:10' 'pin:GND', part 'servo.SIG' 'motor.1', chip 'U1.3'. parts: [{id,type:
-    dip(pins,col)|power|resistor(a,b)|led(a,k,color)|servo|motor|battery9v|generic(terms,label)}]"""
+    board 'pin:10' 'pin:GND', part 'servo.SIG' 'motor.1', chip 'U1.3', 'usb' to 'pc.USB',
+    'bat.+' to 'power.jack+'. parts: [{id,type: dip(pins,col)|power|resistor(a,b)|led(a,k,color)|
+    servo|motor|battery9v|laptop|generic(terms,label)}]. Always end with USB-to-laptop (+battery) step."""
     import wiring3d
     page = wiring3d.build_html(title, board, list(parts), list(steps))
     folder = Path(sketch_path).parent if sketch_path else SCRATCH

@@ -2,22 +2,202 @@
  "title": "Face Fan on the Mega",
  "board": "elegoo mega",
  "parts": [
-  {"id": "U1", "type": "dip", "pins": 16, "col": 10, "label": "L293D"},
-  {"id": "power", "type": "power"},
-  {"id": "motor", "type": "motor", "label": "DC motor + fan"},
-  {"id": "servo", "type": "servo", "label": "SG90"}
+  {
+   "id": "U1",
+   "type": "dip",
+   "pins": 16,
+   "col": 10,
+   "label": "L293D"
+  },
+  {
+   "id": "power",
+   "type": "power"
+  },
+  {
+   "id": "motor",
+   "type": "motor",
+   "label": "DC motor + fan"
+  },
+  {
+   "id": "servo",
+   "type": "servo",
+   "label": "SG90"
+  },
+  {
+   "id": "bat",
+   "type": "battery9v",
+   "xy": [
+    120,
+    300
+   ]
+  },
+  {
+   "id": "pc",
+   "type": "laptop"
+  }
  ],
  "steps": [
-  {"title": "Place the chip and the power module", "place": ["U1", "power"],
-   "notes": ["L293D across the middle gap, notch on the LEFT", "Legs in columns 10-17: pins 1-8 in row f, 16-9 in row e", "Power module on the left end, both jumpers on 5V"]},
-  {"title": "Power and ground for the chip", "notes": ["a10 to top + rail", "a13, a14 to top - rail", "i13, i14 to bottom - rail", "i17 to bottom + rail"],
-   "wires": [["a10", "+top"], ["a13", "-top"], ["a14", "-top"], ["i13", "-bot"], ["i14", "-bot"], ["i17", "+bot"]]},
-  {"title": "Motor wires", "place": ["motor"], "notes": ["Motor red to j12, black to j15"],
-   "wires": [["motor.1", "j12", "red"], ["motor.2", "j15", "black"]]},
-  {"title": "Mega to chip", "notes": ["Mega 10 to j10", "Mega 9 to j11", "Mega 8 to j16"],
-   "wires": [["pin:10", "j10", "purple"], ["pin:9", "j11", "blue"], ["pin:8", "j16", "teal"]]},
-  {"title": "Shared ground", "notes": ["Mega GND to bottom - rail"], "wires": [["pin:GND", "-bot:5"]]},
-  {"title": "Servo", "place": ["servo"], "notes": ["Brown to bottom - rail", "Red to bottom + rail", "Orange to Mega 3"],
-   "wires": [["servo.GND", "-bot:27", "brown"], ["servo.V+", "+bot:28", "red"], ["servo.SIG", "pin:3", "orange"]]}
+  {
+   "title": "Place the chip and the power module",
+   "place": [
+    "U1",
+    "power"
+   ],
+   "notes": [
+    "L293D across the middle gap, notch on the LEFT",
+    "Legs in columns 10-17: pins 1-8 in row f, 16-9 in row e",
+    "Power module on the left end, both jumpers on 5V"
+   ]
+  },
+  {
+   "title": "Power and ground for the chip",
+   "notes": [
+    "a10 to top + rail",
+    "a13, a14 to top - rail",
+    "i13, i14 to bottom - rail",
+    "i17 to bottom + rail"
+   ],
+   "wires": [
+    [
+     "a10",
+     "+top"
+    ],
+    [
+     "a13",
+     "-top"
+    ],
+    [
+     "a14",
+     "-top"
+    ],
+    [
+     "i13",
+     "-bot"
+    ],
+    [
+     "i14",
+     "-bot"
+    ],
+    [
+     "i17",
+     "+bot"
+    ]
+   ]
+  },
+  {
+   "title": "Motor wires",
+   "place": [
+    "motor"
+   ],
+   "notes": [
+    "Motor red to j12, black to j15"
+   ],
+   "wires": [
+    [
+     "motor.1",
+     "j12",
+     "red"
+    ],
+    [
+     "motor.2",
+     "j15",
+     "black"
+    ]
+   ]
+  },
+  {
+   "title": "Mega to chip",
+   "notes": [
+    "Mega 10 to j10",
+    "Mega 9 to j11",
+    "Mega 8 to j16"
+   ],
+   "wires": [
+    [
+     "pin:10",
+     "j10",
+     "purple"
+    ],
+    [
+     "pin:9",
+     "j11",
+     "blue"
+    ],
+    [
+     "pin:8",
+     "j16",
+     "teal"
+    ]
+   ]
+  },
+  {
+   "title": "Shared ground",
+   "notes": [
+    "Mega GND to bottom - rail"
+   ],
+   "wires": [
+    [
+     "pin:GND",
+     "-bot:5"
+    ]
+   ]
+  },
+  {
+   "title": "Servo",
+   "place": [
+    "servo"
+   ],
+   "notes": [
+    "Brown to bottom - rail",
+    "Red to bottom + rail",
+    "Orange to Mega 3"
+   ],
+   "wires": [
+    [
+     "servo.GND",
+     "-bot:27",
+     "brown"
+    ],
+    [
+     "servo.V+",
+     "+bot:28",
+     "red"
+    ],
+    [
+     "servo.SIG",
+     "pin:3",
+     "orange"
+    ]
+   ]
+  },
+  {
+   "title": "Battery and laptop",
+   "place": [
+    "bat",
+    "pc"
+   ],
+   "notes": [
+    "9V battery clip into the power module's round socket",
+    "USB cable from the Mega to the laptop (the laptop's webcam watches your face)",
+    "Run face_fan.py on the laptop"
+   ],
+   "wires": [
+    [
+     "bat.+",
+     "power.jack+",
+     "red"
+    ],
+    [
+     "bat.-",
+     "power.jack-",
+     "black"
+    ],
+    [
+     "usb",
+     "pc.USB",
+     "grey"
+    ]
+   ]
+  }
  ]
 }
