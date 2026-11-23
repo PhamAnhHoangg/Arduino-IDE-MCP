@@ -20,6 +20,12 @@ output and tell you PASS or FAIL, looping until it works.
 
 It runs on **your own computer**, because it needs the USB port.
 
+**Contents:** [Proof](#proof-a-real-project-built-with-this-plugin) ·
+[What it does](#what-it-does) · [3D wiring](#3d-wiring-one-step-at-a-time) ·
+[Install](#install-as-a-claude-plugin-easiest) · [Example prompts](#example-prompts) ·
+[Troubleshooting](#troubleshooting) · [What is tested](#status-what-is-tested) ·
+[Development](#development)
+
 ## Proof: a real project built with this plugin
 
 **[ELEGOO-2560-fan-OpenCV](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV)**:
@@ -361,7 +367,7 @@ This is an early version.
 - `ide open` and `ide type` (the code is typed into the Arduino IDE editor and saved).
 
 **Not tested yet:**
-- macOS.
+- macOS with a real board (the unit tests do pass on macOS in GitHub Actions).
 - Finding the arduino-cli bundled in Arduino IDE 2 (tested only with a separate arduino-cli).
 - Reading the result of `ide verify/upload` (the IDE button is pressed, the result isn't read).
 

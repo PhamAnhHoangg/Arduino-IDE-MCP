@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/PhamAnhHoangg/Arduino-IDE-MCP#troubleshooting
+    about: Common problems (board not found, port busy, first compile slow) and their fixes.
