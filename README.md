@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" width="140" alt="Arduino IDE MCP logo"></p>
+
 # arduino-mcp
 
 [![CI](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/actions/workflows/ci.yml)
