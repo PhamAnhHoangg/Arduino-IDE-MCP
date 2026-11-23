@@ -14,6 +14,20 @@ output and tell you PASS or FAIL, looping until it works.
 
 It runs on **your own computer**, because it needs the USB port.
 
+## Proof: a real project built with this plugin
+
+**[ELEGOO-2560-fan-OpenCV](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV)**:
+a face-following fan on an ELEGOO Mega 2560. The laptop webcam finds your face
+with OpenCV and a servo turns to follow your head, while an L293D runs the fan.
+With this plugin, Claude compiled and checked the sketch on the real toolchain,
+opened it in Arduino IDE, found the board's COM port, and generated the 3D
+step-by-step wiring that was used to build it. It worked on real hardware,
+with demo videos in that repo.
+
+| Camera finds the face | Servo + fan on the real board |
+|---|---|
+| [![camera demo](https://raw.githubusercontent.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV/main/media/demo_camera.gif)](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV) | [![fan demo](https://raw.githubusercontent.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV/main/media/demo_fan.gif)](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV) |
+
 ---
 
 ## What it does
