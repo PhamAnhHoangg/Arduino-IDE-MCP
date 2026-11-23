@@ -97,7 +97,10 @@ The shop links are searches, not checked prices or stock.
 
 ## 3D wiring, one step at a time
 
-Ask "show me how to wire it step by step". `wiring_steps` writes
+It opens **by itself** for every new project: when a new sketch that uses wired
+parts first compiles, `check_sketch` tells Claude to show the wiring, and the
+skill makes it do so without being asked. You can also ask "show me how to wire
+it step by step". `wiring_steps` writes
 `<title>_wiring_steps.html` and opens it in your browser:
 - a **tilted 3D breadboard** with the board, chips, power module, servo and motor,
 - **one step per screen**: the new wires are bright, earlier wires are faded,

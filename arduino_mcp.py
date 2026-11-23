@@ -1439,11 +1439,33 @@ def _write_guide(sk: "Sketch", fqbn: str) -> str:
 # ---------------------------------------------------------------- public tools
 # 8 small tools. Descriptions are kept short on purpose: they cost tokens.
 
+_WIRING_SHOWN: set = set()
+
+
+def _wiring_nudge(out: str, code: str, sketch_path: str, fqbn: str) -> str:
+    """After the first clean compile of a sketch that uses wired parts, tell Claude to
+    show the 3D step-by-step wiring page (the user wants it for every new project)."""
+    if "COMPILE OK" not in out:
+        return ""
+    try:
+        src = code or Path(sketch_path).read_text(encoding="utf-8", errors="replace")
+        if not [l for l in _plan(src, fqbn or DEFAULT_FQBN)["links"] if l[0] != "USB"]:
+            return ""
+    except Exception:
+        return ""
+    key = hashlib.md5(re.sub(r"\s+", "", src).encode()).hexdigest()
+    if key in _WIRING_SHOWN:
+        return ""
+    _WIRING_SHOWN.add(key)
+    return "\nNEXT: call wiring_steps now so the user sees how to wire this project (3D, step by step)."
+
+
 @tool
 def check_sketch(code: str = "", sketch_path: str = "", fqbn: str = "", guide: bool = False) -> str:
     """Compile + check (no board). Pass code or sketch_path. Errors come with line, code, hint.
     guide=True: also open a parts + wiring page for the user."""
     out = _check_sketch(sketch_path=sketch_path, code=code, fqbn=fqbn)
+    out += _wiring_nudge(out, code, sketch_path, fqbn)
     if guide:
         sk = Sketch(sketch_path) if sketch_path else Sketch(str(SCRATCH / "mcp_sketch" / "mcp_sketch.ino"))
         try:
@@ -1468,6 +1490,11 @@ def wiring_steps(steps: list[dict], parts: list[dict] = [], board: str = "mega",
     out = folder / (re.sub(r"\W+", "_", title).strip("_").lower() + "_wiring_steps.html")
     out.write_text(page, encoding="utf-8")
     _step(f"wrote {out}")
+    if sketch_path:
+        try:
+            _WIRING_SHOWN.add(hashlib.md5(re.sub(r"\s+", "", Path(sketch_path).read_text(encoding="utf-8", errors="replace")).encode()).hexdigest())
+        except Exception:
+            pass
     try:
         import webbrowser
         webbrowser.open(out.as_uri())
