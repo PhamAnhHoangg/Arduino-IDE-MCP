@@ -518,7 +518,8 @@ def _open_in_ide(ino: Path, force: bool = False, fqbn: str = "") -> str:
     if str(ino) in _OPENED and not force:
         return ""
     try:
-        _attach(ino.parent, fqbn or DEFAULT_FQBN)  # for arduino-cli; Arduino IDE 2.3 ignores it
+        if fqbn:  # never save a guessed default: it would override the real board later
+            _attach(ino.parent, fqbn)  # for arduino-cli; Arduino IDE 2.3 ignores it
     except Exception:
         pass
     try:
@@ -1549,7 +1550,11 @@ def ide(action: str, code: str = "", sketch_path: str = "") -> str:
     needs board picked in IDE; can't read result)."""
     a = action.lower().strip()
     if a == "open":
-        return open_in_ide(sketch_path=sketch_path, code=code)
+        try:  # save the board that is plugged in (if exactly one kind), never a guess
+            fq = {b[1] for b in _detect_boards()}
+        except Exception:
+            fq = set()
+        return open_in_ide(sketch_path=sketch_path, code=code, fqbn=fq.pop() if len(fq) == 1 else "")
     if a == "type":
         return type_in_ide(code=code, sketch_path=sketch_path)
     if a in ("verify", "upload"):
