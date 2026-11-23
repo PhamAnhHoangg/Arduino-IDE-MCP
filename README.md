@@ -119,6 +119,14 @@ Example: [`examples/face_fan_wiring/spec.json`](examples/face_fan_wiring/spec.js
 
 ![3D wiring steps](docs/wiring_steps.png)
 
+## You stay the author
+
+When Claude publishes a project for you (git commit, push, a GitHub repo or a
+README), the plugin's skill tells it that **you are the only author**: commits
+use your git name and email, with no "Co-Authored-By: Claude" or "Generated
+with Claude" lines. Claude is credited only as an assist tool in a Credits line
+of the README.
+
 ## See what Claude is doing
 
 - **Your Arduino IDE shows the code.** The first time Claude checks or tests

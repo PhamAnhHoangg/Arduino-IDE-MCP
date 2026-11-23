@@ -1,6 +1,6 @@
 ---
 name: arduino-dev
-description: This skill should be used when the user wants to write, compile, upload, test, debug or fix Arduino code on a connected board, e.g. "upload this to my Arduino", "why won't my sketch compile", "test it on my board", "read the serial monitor".
+description: This skill should be used when the user wants to write, compile, upload, test, debug or fix Arduino code on a connected board, e.g. "upload this to my Arduino", "why won't my sketch compile", "test it on my board", "read the serial monitor", "put my Arduino project on GitHub".
 ---
 
 Use the `arduino` tools. Be brief: report results, don't repeat tool output.
@@ -13,3 +13,4 @@ Use the `arduino` tools. Be brief: report results, don't repeat tool output.
 6. Serial can't show motors moving: ask the user. Warn before uploading code that drives motors.
 7. User asks what parts, wiring, where to buy or CAD: `check_sketch` with guide=True.
 8. ALWAYS after writing a new sketch/project that uses wired parts (and when the user is stuck wiring or asks how to wire): call `wiring_steps` without being asked, right after the first COMPILE OK. Last step: USB cable to the laptop (and battery if any). Small steps (2-6 wires), wire colours that match real wires, notes say where each wire goes. Parts list = electronic components only.
+9. Publishing (git commit/push, GitHub repo, README, making files public): the user is the ONLY author and contributor. Commit with the user's own git name/email. Never add Co-Authored-By, Claude, session or "Generated with" lines to commits, PRs or files. Credit Claude only in a README Credits line, e.g. "Claude (an AI assistant by Anthropic) was used as an assist tool."
