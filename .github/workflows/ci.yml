@@ -50,7 +50,7 @@ jobs:
           python -c "import json; [json.load(open(f)) for f in ('.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', '.mcp.json')]"
       - name: Build arduino.plugin
         run: python scripts/build_plugin.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arduino.plugin
           path: dist/arduino.plugin
