@@ -119,6 +119,8 @@ Example: [`examples/face_fan_wiring/spec.json`](examples/face_fan_wiring/spec.js
 
 ![3D wiring steps](docs/wiring_steps.png)
 
+**Example project made with this plugin:** [ELEGOO-2560-fan-OpenCV](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV), a face-following fan (Mega 2560, L293D, SG90 servo, OpenCV webcam), with demo videos.
+
 ## You stay the author
 
 When Claude publishes a project for you (git commit, push, a GitHub repo or a
