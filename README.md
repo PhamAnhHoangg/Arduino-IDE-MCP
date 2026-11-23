@@ -1,226 +1,227 @@
-<p align="center"><img src="docs/logo.png" width="140" alt="Arduino IDE MCP logo"></p>
+<div align="center">
 
-# arduino-mcp
+<img src="docs/logo.png" width="128" alt="Arduino IDE MCP logo">
+
+# Arduino IDE MCP
+
+**Let Claude write, compile, upload, test and debug Arduino code on your real board.**
 
 [![CI](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/PhamAnhHoangg/Arduino-IDE-MCP?include_prereleases)](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Let Claude write, compile, upload, test and debug Arduino code on your real board.**
+[Quick start](#quick-start) ·
+[Proof](#proof-a-real-project) ·
+[Features](#features) ·
+[Tools](#tools) ·
+[Install](#install) ·
+[Troubleshooting](#troubleshooting) ·
+[Development](#development)
 
-An [MCP](https://modelcontextprotocol.io) server that wraps the official
-[`arduino-cli`](https://arduino.github.io/arduino-cli/). Plug in your Arduino,
-add this server to Claude Code (or Claude Desktop / VS Code), and ask:
+</div>
+
+An [MCP](https://modelcontextprotocol.io) server and Claude plugin built on the
+official [`arduino-cli`](https://arduino.github.io/arduino-cli/). Plug in your
+Arduino and ask:
 
 > Write a sketch that blinks the LED and prints "TEST ok" every second, then
 > test it on my board.
 
-Claude will compile it, read the errors, fix them, upload it, read the Serial
-output and tell you PASS or FAIL, looping until it works.
+Claude compiles it, reads the errors, fixes them, uploads it, reads the Serial
+output and tells you **PASS** or **FAIL**, looping until it works. It runs on
+**your own computer**, because it needs the USB port.
 
-It runs on **your own computer**, because it needs the USB port.
+## Quick start
 
-**Contents:** [Proof](#proof-a-real-project-built-with-this-plugin) ·
-[What it does](#what-it-does) · [3D wiring](#3d-wiring-one-step-at-a-time) ·
-[Install](#install-as-a-claude-plugin-easiest) · [Example prompts](#example-prompts) ·
-[Troubleshooting](#troubleshooting) · [What is tested](#status-what-is-tested) ·
-[Development](#development)
+You need **Python 3.10+** and **arduino-cli** ([how to install](#1-install-arduino-cli)).
+The plugin installs its Python packages by itself on first start.
 
-## Proof: a real project built with this plugin
+**Claude Code**
 
-**[ELEGOO-2560-fan-OpenCV](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV)**:
-a face-following fan on an ELEGOO Mega 2560. The laptop webcam finds your face
-with OpenCV and a servo turns to follow your head, while an L293D runs the fan.
-With this plugin, Claude compiled and checked the sketch on the real toolchain,
-opened it in Arduino IDE, found the board's COM port, and generated the 3D
-step-by-step wiring that was used to build it. It worked on real hardware,
-with demo videos in that repo.
+```
+/plugin marketplace add PhamAnhHoangg/Arduino-IDE-MCP
+/plugin install arduino@arduino-ide-mcp
+```
+
+Restart Claude Code and check `/mcp`: `plugin:arduino:arduino` should be connected.
+
+**Claude desktop app:** download `arduino.plugin` from the
+[latest Release](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/releases/latest)
+(or [`dist/arduino.plugin`](dist/arduino.plugin)) and upload it in the app's
+plugin settings, or drag it into a chat.
+
+On macOS/Linux, if `python` isn't found, edit `.mcp.json` to use `python3`.
+
+## Proof: a real project
+
+**[ELEGOO-2560-fan-OpenCV](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV)**
+is a face-following fan on an ELEGOO Mega 2560 (OpenCV webcam, SG90 servo,
+L293D). With this plugin, Claude compiled and checked the sketch on the real
+toolchain, opened it in Arduino IDE, found the COM port and generated the 3D
+wiring steps used to build it. It works on real hardware.
 
 | Camera finds the face | Servo + fan on the real board |
-|---|---|
+|:---:|:---:|
 | [![camera demo](https://raw.githubusercontent.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV/main/media/demo_camera.gif)](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV) | [![fan demo](https://raw.githubusercontent.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV/main/media/demo_fan.gif)](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV) |
 
 ---
 
-## What it does
+## Features
 
-**The test and debug loop**
+### The test and debug loop
 
-1. **`check_sketch`** compiles the code with no board needed. It returns each
-   error with the file, the line, the code on that line and a plain-English
-   hint. It also runs extra checks the compiler doesn't do: a missing
-   `Serial.begin`, long blocking `delay()`s, `while(!Serial)` freezing on
-   battery, and a missing `controller.begin()` / `controller.ping()` for the
-   Arduino Motor Carrier.
-2. **`library`** fact-checks a library. It reads the real function names
-   and parameters from the installed library's `.h` files, so Claude doesn't
-   invent functions that don't exist.
-3. **`test_on_board`** does compile, upload, open Serial, send test lines,
-   read the output and answer **PASS** / **FAIL**, all in one call. You give it what
-   must appear (`expect`), what means failure (`fail_on`) and what to send (`send`).
+1. **`check_sketch`** compiles with no board needed and returns each error with
+   the file, line, code and a plain-English hint. It also catches what the
+   compiler doesn't: a missing `Serial.begin`, long blocking `delay()`s,
+   `while(!Serial)` freezing on battery, and a missing `controller.begin()` /
+   `controller.ping()` for the Arduino Motor Carrier.
+2. **`library`** reads the real function names and parameters from the
+   installed library's `.h` files, so Claude doesn't invent functions.
+3. **`test_on_board`** compiles, uploads, opens Serial, sends test lines, reads
+   the output and answers **PASS** / **FAIL** in one call (`expect`,
+   `fail_on`, `send`).
 
-You can paste code straight in (the `code` input), or point at a `.ino` file
-or sketch folder. Sketches whose folder name doesn't match the `.ino` name
-work too. Re-compiles are faster because each sketch keeps its build folder.
+Paste code straight in (`code`) or point at a `.ino` file or sketch folder.
+Re-compiles are faster because each sketch keeps its build folder. The plugin
+also adds the `arduino-dev` skill, which teaches Claude this check, fix, test loop.
 
-**All tools**
+### 3D wiring, one step at a time
+
+When a new sketch with wired parts first compiles, Claude opens a step-by-step
+3D breadboard page **by itself** (or ask "show me how to wire it step by step"):
+
+- a **tilted 3D breadboard** with the board, chips, power module, servo and motor,
+- **one step per screen**: new wires bright, earlier wires faded, used board pins light up yellow,
+- **Back / Next** (or arrow keys), **Show all**, and a **tilt** slider,
+- **no text on the wires**, so nothing hides the hole a wire goes into.
+
+![3D wiring steps](docs/wiring_steps.png)
+
+<details>
+<summary><b>How Claude describes a build</b></summary>
+
+Parts plus steps. Wire ends are a breadboard hole (`j10`), a rail (`+top`,
+`-bot`, `-bot:13`), a board pin (`pin:10`, `pin:GND`), a part terminal
+(`servo.SIG`, `motor.1`), a chip pin (`U1.3`, which picks a free hole in that
+pin's column), the board's USB port (`usb`, to a `laptop` part's `pc.USB`) or a
+power module's battery socket (`power.jack+`, `power.jack-`). Boards: Mega and
+Uno (others are drawn as an Uno-size board). The page is saved as
+`<title>_wiring_steps.html`. Example:
+[`examples/face_fan_wiring/spec.json`](examples/face_fan_wiring/spec.json).
+</details>
+
+### Parts page: what you need and where to buy it
+
+Ask "show me what I need for this sketch". `check_sketch` with `guide=True`
+writes `<sketch>_parts.html` and opens it: a blueprint-style wiring drawing
+(also saved as `<sketch>_schematic.svg`), parts, tools and software
+checklists, shop search links, similar projects and CAD / 3D-print models.
+
+<details>
+<summary><b>More about the parts page</b></summary>
+
+- The **wiring drawing** shows the board from above with its real header pins
+  (Nano-size boards), the Motor Carrier's SERVO 1-4 / M1-M4 / battery ports,
+  and each wire from the exact pin or port to the part. Carrier port positions
+  are approximate (Arduino doesn't publish them); other boards are drawn as a
+  simple pin list.
+- **Checklists:** parts, tools (only the ones the sketch needs) and software
+  (board package, libraries).
+- **Where to buy:** search links for Amazon (pick your country), AliExpress,
+  eBay, the Arduino Store, price comparison and shops near you. They are
+  searches, not checked prices or stock.
+- **Similar projects** (Arduino Project Hub, Hackster, Instructables) and
+  **CAD / 3D-print models** (Printables, Thingiverse, GrabCAD).
+- It is worked out from the code, so it knows the pins and ports, not the exact
+  part you plugged in. Name a part with a comment like `// PART: SG90 servo -> SERVO1`.
+
+![face fan schematic](docs/face_fan_schematic.png)
+</details>
+
+### It fills in the details itself
+
+You don't need to tell Claude the board or port. The tools detect the plugged-in
+board and port, remember them in the sketch's `sketch.yaml`, install a missing
+board package, name a missing library, and tell you what to close when the port
+is busy. With several boards (or none), Claude asks one short question instead
+of failing.
+
+The default board is the **Arduino Nano 33 IoT** (`arduino:samd:nano_33_iot`).
+For any other board, tell Claude ("use an Uno") or change the default in
+[Settings](#settings).
+
+### See what Claude is doing
+
+- **Arduino IDE shows the code.** The first check opens the sketch in Arduino
+  IDE, and Claude keeps writing to that file, so you see each change.
+- **Every reply says what ran:** a short `[did: ...]` line lists each
+  arduino-cli command, port and time. The full log is in
+  `Documents/arduino-mcp-sketches/arduino-mcp.log`.
+
+<details>
+<summary><b>Typing into the IDE, Verify/Upload buttons, and why not computer use</b></summary>
+
+- **Board setting.** The server saves the board (and, after the first upload,
+  the port) in `sketch.yaml` with `arduino-cli board attach` for its own tools.
+  **Arduino IDE 2.3 does not read that file** (tested), so for the IDE's own
+  buttons pick the board once in the IDE's dropdown; it remembers it.
+- **`ide type` (Windows)** brings the sketch's IDE window to the front, clicks
+  once in the editor, clears it and pastes the code line by line (so auto-indent
+  and auto-closing brackets can't mangle it). It sends keys only while that
+  window is in front and stops if you click away, then saves (Ctrl+S) and
+  checks the saved file matches. It borrows the clipboard and puts your text back.
+- **`ide verify` / `ide upload`** press Ctrl+R / Ctrl+U in the IDE window, only
+  if it is really in front. They can't read the IDE's result, so Claude confirms
+  with a normal check afterwards.
+- **Why not computer use?** Each screenshot step costs roughly 1,000 to 1,500
+  tokens and a few seconds, so a compile, fix and upload loop would take minutes
+  and tens of thousands of tokens. Arduino IDE 2 has no official API. So the real
+  work goes through arduino-cli (the same engine, boards and libraries as the
+  IDE), and the IDE is used to *show* you the code.
+- **Token use:** the tool definitions are short and Claude Code usually loads
+  them only when needed. Replies are compact: errors only, repeated Serial lines
+  collapsed (`READY (x12)`), long paths shortened.
+</details>
+
+### You stay the author
+
+When Claude publishes a project for you (commit, push, a GitHub repo or a
+README), the skill makes **you the only author**: your git name and email, no
+"Co-Authored-By: Claude" or "Generated with Claude" lines. Claude is credited
+only as an assist tool in the README's Credits.
+
+## Tools
 
 | Tool | What it does |
 |---|---|
-| `check_sketch` | Compile + clear errors + extra checks. No board needed. `guide=True` also opens a parts page (see below). |
+| `check_sketch` | Compile + clear errors + extra checks. No board needed. `guide=True` also opens the parts page. |
 | `test_on_board` | Write, compile, upload, Serial test, PASS/FAIL in one call. Board and port auto-detected. |
 | `serial` | Send a line and/or read Serial output. |
 | `library` | Real functions of an installed library, list installed libraries, or search the Library Manager. |
 | `install` | Install a board core (`arduino:samd`) or a library (`Servo`). |
 | `boards` | arduino-cli status and connected boards, or search a board's FQBN. |
 | `ide` | Arduino IDE window (Windows): `open`, `type` the code in, press `verify` / `upload`. |
-| `wiring_steps` | Opens a 3D step-by-step breadboard wiring page in your browser (see below). |
+| `wiring_steps` | Open the 3D step-by-step breadboard wiring page. |
 
-The plugin version also includes the `arduino-dev` skill, which tells Claude to work in this order.
+## Example prompts
 
-The default board is the **Arduino Nano 33 IoT** (`arduino:samd:nano_33_iot`).
-For any other board, just tell Claude which one ("use an Uno"), or change the
-default (see [Settings](#settings)).
+- "List my connected Arduino boards."
+- "Check `blink/blink.ino` and fix any errors."
+- "Write a sketch that reads A0 and prints the value. Test it on COM5, expecting a number."
+- "Run `examples/serial_selftest` on my board, send `ping`, expect `READY` and `pong`."
+- "What functions does the ArduinoMotorCarrier library have for servos?"
+- "Show me how to wire it step by step."
+
+> **Tip:** have the sketch print clear markers like `READY` or `TEST ok`,
+> repeatedly or in reply to a command. Output in the first second after reset
+> can be missed while USB reconnects. See
+> [`examples/serial_selftest`](examples/serial_selftest/serial_selftest.ino).
 
 ---
 
-## It fills in the details itself
+## Install
 
-You don't need to tell Claude the board or port. The tools:
-- **detect the plugged-in board and port** (`arduino-cli board list`) and use
-  them. If there are several boards, or none, Claude asks you one short
-  question instead of failing.
-- **remember the board and port** in the sketch's `sketch.yaml` for their own
-  compile/upload tools. (Arduino IDE ignores that file: pick the board once in
-  the IDE's board dropdown and it remembers it.)
-- **install a missing board package** by themselves, then retry the compile.
-- **name the missing library**, and Claude asks you if there are several candidates.
-- **tell you what to close** when the port is busy (Serial Monitor, a Python script...).
-
-## Parts page: what you need, how to wire it, where to buy it
-
-Ask "show me what I need for this sketch". `check_sketch` with `guide=True`
-writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
-- a **blueprint-style wiring drawing**: the board seen from above with its real
-  header pins (Nano-size boards), the Motor Carrier's SERVO 1-4 / M1-M4 / battery
-  ports, and each wire running from the exact pin or port to the part (servo
-  signal/+5V/GND colours, motor + and -). Carrier port positions are approximate
-  (Arduino doesn't publish them), and other boards are drawn as a simple pin list.
-  It is also saved as `<sketch>_schematic.svg`,
-- a **parts checklist**, a **tools you need** checklist (screwdriver, wire
-  stripper, breadboard, jumper wires, resistors, charger, multimeter: only the
-  ones the sketch needs) and a **software checklist** (board package, libraries),
-- **where to buy** each part: search links for Amazon (pick your country),
-  AliExpress, eBay, the Arduino Store, price comparison and shops near you,
-- **similar projects** (Arduino Project Hub, Hackster, Instructables) and
-  **CAD / 3D-print models** (Printables, Thingiverse, GrabCAD).
-
-![face fan schematic](docs/face_fan_schematic.png)
-
-It is worked out from the code, so it knows the pins and ports, not the exact
-part you plugged in. Name a part with a comment like `// PART: SG90 servo -> SERVO1`.
-The shop links are searches, not checked prices or stock.
-
-## 3D wiring, one step at a time
-
-It opens **by itself** for every new project: when a new sketch that uses wired
-parts first compiles, `check_sketch` tells Claude to show the wiring, and the
-skill makes it do so without being asked. You can also ask "show me how to wire
-it step by step". `wiring_steps` writes
-`<title>_wiring_steps.html` and opens it in your browser:
-- a **tilted 3D breadboard** with the board, chips, power module, servo and motor,
-- **one step per screen**: the new wires are bright, earlier wires are faded,
-  parts appear when they are placed, and the board pins you use light up yellow,
-- **Back / Next** buttons (or the arrow keys), **Show all** for the finished
-  build, and a **tilt** slider,
-- **no text on the wires**, so nothing hides the hole a wire goes into. The
-  wire colour shows which wire it is, and the step text at the top says where it goes.
-
-Claude describes the build as parts plus steps. Wire ends are a breadboard hole
-(`j10`), a rail (`+top`, `-bot`, `-bot:13`), a board pin (`pin:10`, `pin:GND`),
-a part terminal (`servo.SIG`, `motor.1`), a chip pin (`U1.3`, which picks a
-free hole in that pin's column), the board's USB port (`usb`, to a `laptop` part's `pc.USB`)
-or a power module's battery socket (`power.jack+`, `power.jack-`). Boards: Mega and Uno (others are drawn as an Uno-size board).
-Example: [`examples/face_fan_wiring/spec.json`](examples/face_fan_wiring/spec.json).
-
-![3D wiring steps](docs/wiring_steps.png)
-
-**Example project made with this plugin:** [ELEGOO-2560-fan-OpenCV](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV), a face-following fan (Mega 2560, L293D, SG90 servo, OpenCV webcam), with demo videos.
-
-## You stay the author
-
-When Claude publishes a project for you (git commit, push, a GitHub repo or a
-README), the plugin's skill tells it that **you are the only author**: commits
-use your git name and email, with no "Co-Authored-By: Claude" or "Generated
-with Claude" lines. Claude is credited only as an assist tool in a Credits line
-of the README.
-
-## See what Claude is doing
-
-- **Your Arduino IDE shows the code.** The first time Claude checks or tests
-  a sketch, it opens it in Arduino IDE. Claude keeps writing to that same
-  file, so the IDE window shows each change.
-- **The board is set for the plugin's own tools.** The server saves the board
-  (and, after the first upload, the port) in the sketch's `sketch.yaml` with
-  `arduino-cli board attach`, so its compile/upload/test tools don't need you
-  to pick anything. **Arduino IDE 2.3 does not read that file** (tested), so
-  for the IDE's own Verify/Upload buttons pick the board once in the IDE's
-  board dropdown; the IDE remembers it for that sketch.
-- **Watch the code being written in the IDE (Windows).** `ide` with `type`
-  brings the sketch's Arduino IDE window to the front, clicks once in its
-  editor, clears it and puts the code in line by line (pasting each line, so
-  the IDE's auto-indent and auto-closing brackets can't mangle it). It sends
-  keys only while that IDE window is in front and stops if you click away. Then
-  it saves (Ctrl+S) and checks the saved file matches the code. It borrows the
-  clipboard while typing and puts your clipboard text back afterwards.
-- **Verify / Upload in the IDE, if you want to watch them.** `ide` with `verify`/`upload`
-  brings the Arduino IDE window to the front and presses Ctrl+R (Verify) or
-  Ctrl+U (Upload), like you would. It only presses keys if the IDE window is
-  really in front. It can't read the IDE's result, so Claude confirms with a
-  normal check afterwards.
-- **Every reply says what ran:** a short `[did: ...]` line lists each
-  arduino-cli command, port and time. The full log is in
-  `Documents/arduino-mcp-sketches/arduino-mcp.log`.
-
-**Why not type the code into the IDE with the mouse and keyboard?** Claude
-can do that with computer use (screenshots plus clicks), like the "second
-cursor" MCPs for CAD apps. But each step needs a screenshot, which costs
-roughly 1,000 to 1,500 tokens and a few seconds. A compile, fix and upload
-loop would take minutes and use tens of thousands of tokens. Arduino IDE 2
-has no official API for other programs to drive it. So this server uses a
-hybrid: the real work goes through arduino-cli (the same engine and the same
-installed boards and libraries as the IDE), and the IDE is used to *show*
-you the code and, when you ask, run Verify/Upload where you can see it.
-
-**Token use:** 7 tools whose definitions total about 690 tokens (down from
-about 1,550 in v0.4), plus a short skill. Claude Code usually loads MCP tool
-details only when they're needed, so the fixed cost per conversation is
-mostly the tool names. Replies are compact: errors only, repeated Serial lines
-collapsed (`READY (x12)`), long paths shortened.
-
-## Install as a Claude plugin (easiest)
-
-You still need **Python 3.10+** and **arduino-cli** on your computer (step 1
-below). The plugin installs its two Python packages by itself on first start.
-
-**Claude Code:**
-```
-/plugin marketplace add PhamAnhHoangg/Arduino-IDE-MCP
-/plugin install arduino@arduino-ide-mcp
-```
-Restart Claude Code, then check `/mcp`. You should see `plugin:arduino:arduino`
-connected. The plugin also adds an `arduino-dev` skill that teaches Claude the
-check, fix, test loop.
-
-**Claude desktop app:** download
-[`dist/arduino.plugin`](dist/arduino.plugin) from this repo (or from the latest [Release](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/releases)) and upload it in
-the app's plugin settings (or drag it into a chat).
-
-On macOS/Linux, if `python` isn't found, edit `.mcp.json` to use `python3`.
-
-## Manual install (3 steps)
-
-You need **Python 3.10+** and **arduino-cli**.
+The [Quick start](#quick-start) plugin install is the easiest. To add the server by hand:
 
 ### 1. Install arduino-cli
 
@@ -230,25 +231,22 @@ You need **Python 3.10+** and **arduino-cli**.
 | macOS | `brew install arduino-cli` |
 | Linux | `curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \| sh` (puts it in `./bin`; move it onto your PATH) |
 
-Already have **Arduino IDE 2** on Windows or macOS? You can skip this step.
-The server looks for the copy of arduino-cli that ships inside the IDE.
-
-No Python yet? Get it from [python.org](https://www.python.org/downloads/).
-On Windows, tick **"Add python.exe to PATH"** in the installer.
+Already have **Arduino IDE 2** on Windows or macOS? You can skip this: the
+server looks for the arduino-cli inside the IDE. No Python yet? Get it from
+[python.org](https://www.python.org/downloads/) and on Windows tick **"Add
+python.exe to PATH"**.
 
 ### 2. Download this repo and install the Python packages
 
-Click **Code > Download ZIP** on GitHub and unzip it (or `git clone` it), then
-in a terminal inside the folder:
+**Code > Download ZIP** (or `git clone`), then inside the folder:
 
 ```
 python -m pip install -r requirements.txt
 ```
-(On macOS/Linux use `python3` if `python` isn't found.)
 
 ### 3. Add it to Claude
 
-**Claude Code** (terminal, and the Claude Code extension for VS Code / JetBrains):
+**Claude Code** (terminal, VS Code / JetBrains extension):
 
 ```
 # Windows
@@ -257,7 +255,8 @@ claude mcp add arduino --scope user -- python "C:\path\to\arduino-mcp\arduino_mc
 # macOS / Linux
 claude mcp add arduino --scope user -- python3 /path/to/arduino-mcp/arduino_mcp.py
 ```
-Restart `claude` and type `/mcp`. You should see **arduino** connected.
+
+Restart `claude` and type `/mcp`: **arduino** should be connected.
 
 <details>
 <summary><b>Claude Desktop</b></summary>
@@ -284,94 +283,69 @@ Copy `vscode-mcp.example.json` to `.vscode/mcp.json` in your project, fix the
 path inside, and click **Start** above the server entry.
 </details>
 
-Finally, install your board's core once. You can just ask Claude
-"install the core for my board", or run it yourself:
+### 4. Install your board's core
+
+Ask Claude "install the core for my board", or run:
+
 ```
 arduino-cli core update-index
 arduino-cli core install arduino:avr      # Uno, Mega, classic Nano
 arduino-cli core install arduino:samd     # Nano 33 IoT, MKR boards
 ```
 
----
+### Settings
 
-## Example prompts
-
-- "List my connected Arduino boards."
-- "Check `blink/blink.ino` and fix any errors."
-- "Write a sketch that reads A0 and prints the value. Test it on COM5, expecting a number."
-- "Run `examples/serial_selftest` on my board, send `ping`, expect `READY` and `pong`."
-- "What functions does the ArduinoMotorCarrier library have for servos?"
-- "Read the serial output for 10 seconds."
-
-**Tip for testable sketches:** have the sketch print clear markers like
-`READY` or `TEST ok`, and print them repeatedly or in reply to a command.
-Output in the first second after reset can be missed while USB reconnects.
-See [`examples/serial_selftest`](examples/serial_selftest/serial_selftest.ino).
-
----
-
-## Settings
-
-Optional environment variables. Add them with `-e` in `claude mcp add`, e.g.
-`claude mcp add arduino --scope user -e ARDUINO_FQBN=arduino:avr:uno -- python ...`
+Optional environment variables, added with `-e` in `claude mcp add`
+(e.g. `-e ARDUINO_FQBN=arduino:avr:uno`):
 
 | Variable | Meaning | Default |
 |---|---|---|
 | `ARDUINO_CLI` | Full path to `arduino-cli` if it isn't found automatically | PATH, `Program Files\Arduino CLI`, WinGet, Arduino IDE 2 |
 | `ARDUINO_FQBN` | Default board | `arduino:samd:nano_33_iot` |
 
----
-
 ## Troubleshooting
 
-- **"arduino-cli was not found"**: set `ARDUINO_CLI` to its full path
-  (`where arduino-cli` on Windows, `which arduino-cli` on macOS/Linux).
-- **Upload: "access denied" / "port busy"**: only one program can use a serial
-  port. Close the Arduino IDE Serial Monitor and any script using the port.
-- **No board found**: try another USB cable, because some only charge.
-- **Linux: permission denied on `/dev/ttyACM0`**: run
-  `sudo usermod -aG dialout $USER`, then log out and back in.
-- **Native-USB boards (Nano 33 IoT, MKR, Leonardo) won't upload**: double-tap
-  reset (the LED pulses) and try again. The port name can change after this.
-- **First compile is slow**: that's normal. Later ones are faster.
+| Problem | Fix |
+|---|---|
+| "arduino-cli was not found" | Set `ARDUINO_CLI` to its full path (`where arduino-cli` / `which arduino-cli`). |
+| Upload: "access denied" / "port busy" | Only one program can use a port. Close the Serial Monitor and any script using it. |
+| No board found | Try another USB cable; some only charge. |
+| Linux: permission denied on `/dev/ttyACM0` | `sudo usermod -aG dialout $USER`, then log out and in. |
+| Nano 33 IoT / MKR / Leonardo won't upload | Double-tap reset (LED pulses) and retry. The port name can change. |
+| First compile is slow | Normal. Later ones are faster. |
 
----
+## Limits and status
 
-## Limits
-
-- `test_on_board` only sees what the board prints over Serial. It can't see a
-  motor turn or an LED light. Make the sketch print what it did (sensor values,
-  encoder counts), or check the hardware yourself.
+- `test_on_board` only sees what the board prints over Serial, not a motor
+  turning or an LED lighting. Make the sketch print what it did, or check the
+  hardware yourself.
 - Claude can make mistakes. Read the code before running it on hardware that
   can move, heat up, or draw a lot of current.
 
-## Status: what is tested
-
-This is an early version.
+<details>
+<summary><b>What is tested (early version)</b></summary>
 
 **Tested** (Linux, Python `mcp` 1.x, through a real MCP client):
 - The server starts and all 8 tools load.
-- The `wiring_steps` page, rendered in Chromium (steps, Show all, tilt), with the face fan example.
-- The plugin passes `claude plugin validate`, installs in Claude Code from the
-  marketplace, shows as connected in `claude mcp list`, and auto-installs its
-  Python packages into a fresh Python environment.
-- Compile-error parsing, hints and extra checks, using real `g++` compiler errors.
+- The `wiring_steps` page in Chromium (steps, Show all, tilt) with the face fan example.
+- The plugin passes `claude plugin validate`, installs from the marketplace,
+  shows as connected in `claude mcp list`, and auto-installs its Python packages.
+- Compile-error parsing, hints and extra checks, using real `g++` errors.
 - `library` against the real ArduinoMotorCarrier library source.
-- `test_on_board` and `serial` against a **simulated** serial board
-  (PASS, FAIL, compile failure, send and reply).
+- `test_on_board` and `serial` against a **simulated** serial board.
 
 **Tested on a real Windows PC** (Claude desktop app, Arduino IDE 2.3.11, arduino-cli 1.6.0):
 - Real compiles for the Nano 33 IoT and the Mega 2560, board and port auto-detection.
-- A real upload to a Nano 33 IoT, and the face fan running on a Mega 2560
-  ([see the project](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV)).
-- `ide open` and `ide type` (the code is typed into the Arduino IDE editor and saved).
+- A real upload to a Nano 33 IoT, and the [face fan](https://github.com/PhamAnhHoangg/ELEGOO-2560-fan-OpenCV) running on a Mega 2560.
+- `ide open` and `ide type`.
 
 **Not tested yet:**
-- macOS with a real board (the unit tests do pass on macOS in GitHub Actions).
-- Finding the arduino-cli bundled in Arduino IDE 2 (tested only with a separate arduino-cli).
-- Reading the result of `ide verify/upload` (the IDE button is pressed, the result isn't read).
+- macOS with a real board (the unit tests pass on macOS in GitHub Actions).
+- Finding the arduino-cli bundled in Arduino IDE 2.
+- Reading the result of `ide verify/upload`.
 
-If you try it, please open an issue with what worked or broke.
+If you try it, please [open an issue](https://github.com/PhamAnhHoangg/Arduino-IDE-MCP/issues/new/choose) with what worked or broke.
+</details>
 
 ## Development
 
@@ -382,13 +356,14 @@ python scripts/build_plugin.py
 ```
 
 GitHub Actions runs the tests on Windows, macOS and Linux, compiles the example
-sketches, and builds the plugin on every push. When the version in
-`.claude-plugin/plugin.json` changes, it publishes a Release with `arduino.plugin` attached. See
-[CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
+sketches and builds the plugin on every push. Changing the version in
+`.claude-plugin/plugin.json` publishes a Release with `arduino.plugin` attached.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md) and
+[SECURITY.md](SECURITY.md).
 
 ## Credits
 
-Built by PhamAnhHoangg with help from Claude, an AI assistant tool by Anthropic.
+Built by **PhamAnhHoangg** with help from Claude, an AI assistant tool by Anthropic.
 
 ## License
 
