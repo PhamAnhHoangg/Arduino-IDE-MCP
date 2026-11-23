@@ -12,3 +12,4 @@ Use the `arduino` tools. Be brief: report results, don't repeat tool output.
 5. User wants to watch in Arduino IDE: `ide` type/verify/upload. Never use screenshots/computer use.
 6. Serial can't show motors moving: ask the user. Warn before uploading code that drives motors.
 7. User asks what parts, wiring, where to buy or CAD: `check_sketch` with guide=True.
+8. User wants to wire it step by step / is stuck wiring: `wiring_steps`. Small steps (2-6 wires), wire colours that match real wires, notes say where each wire goes. Parts list = electronic components only.

@@ -48,6 +48,7 @@ work too. Re-compiles are faster because each sketch keeps its build folder.
 | `install` | Install a board core (`arduino:samd`) or a library (`Servo`). |
 | `boards` | arduino-cli status and connected boards, or search a board's FQBN. |
 | `ide` | Arduino IDE window (Windows): `open`, `type` the code in, press `verify` / `upload`. |
+| `wiring_steps` | Opens a 3D step-by-step breadboard wiring page in your browser (see below). |
 
 The plugin version also includes the `arduino-dev` skill, which tells Claude to work in this order.
 
@@ -93,6 +94,26 @@ writes `<sketch>_parts.html` next to the sketch and opens it in your browser:
 It is worked out from the code, so it knows the pins and ports, not the exact
 part you plugged in. Name a part with a comment like `// PART: SG90 servo -> SERVO1`.
 The shop links are searches, not checked prices or stock.
+
+## 3D wiring, one step at a time
+
+Ask "show me how to wire it step by step". `wiring_steps` writes
+`<title>_wiring_steps.html` and opens it in your browser:
+- a **tilted 3D breadboard** with the board, chips, power module, servo and motor,
+- **one step per screen**: the new wires are bright, earlier wires are faded,
+  parts appear when they are placed, and the board pins you use light up yellow,
+- **Back / Next** buttons (or the arrow keys), **Show all** for the finished
+  build, and a **tilt** slider,
+- **no text on the wires**, so nothing hides the hole a wire goes into. The
+  wire colour shows which wire it is, and the step text at the top says where it goes.
+
+Claude describes the build as parts plus steps. Wire ends are a breadboard hole
+(`j10`), a rail (`+top`, `-bot`, `-bot:13`), a board pin (`pin:10`, `pin:GND`),
+a part terminal (`servo.SIG`, `motor.1`) or a chip pin (`U1.3`, which picks a
+free hole in that pin's column). Boards: Mega and Uno (others are drawn as an Uno-size board).
+Example: [`examples/face_fan_wiring/spec.json`](examples/face_fan_wiring/spec.json).
+
+![3D wiring steps](docs/wiring_steps.png)
 
 ## See what Claude is doing
 
@@ -289,7 +310,8 @@ Optional environment variables. Add them with `-e` in `claude mcp add`, e.g.
 This is an early version.
 
 **Tested** (Linux, Python `mcp` 1.x, through a real MCP client):
-- The server starts and all 7 tools load.
+- The server starts and all 8 tools load.
+- The `wiring_steps` page, rendered in Chromium (steps, Show all, tilt), with the face fan example.
 - The plugin passes `claude plugin validate`, installs in Claude Code from the
   marketplace, shows as connected in `claude mcp list`, and auto-installs its
   Python packages into a fresh Python environment.

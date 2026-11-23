@@ -1437,7 +1437,7 @@ def _write_guide(sk: "Sketch", fqbn: str) -> str:
 
 
 # ---------------------------------------------------------------- public tools
-# 7 small tools. Descriptions are kept short on purpose: they cost tokens.
+# 8 small tools. Descriptions are kept short on purpose: they cost tokens.
 
 @tool
 def check_sketch(code: str = "", sketch_path: str = "", fqbn: str = "", guide: bool = False) -> str:
@@ -1452,6 +1452,29 @@ def check_sketch(code: str = "", sketch_path: str = "", fqbn: str = "", guide: b
         finally:
             sk.cleanup()
     return out
+
+
+@tool
+def wiring_steps(steps: list[dict], parts: list[dict] = [], board: str = "mega",
+                 title: str = "Wiring", sketch_path: str = "") -> str:
+    """Open a 3D step-by-step breadboard wiring page (Back/Next). steps: [{title, notes[],
+    place[part ids], wires[[from,to,color]]}]. Ends: hole 'j10', rail '+top' '-bot' ('-bot:13'),
+    board 'pin:10' 'pin:GND', part 'servo.SIG' 'motor.1', chip 'U1.3'. parts: [{id,type:
+    dip(pins,col)|power|resistor(a,b)|led(a,k,color)|servo|motor|battery9v|generic(terms,label)}]"""
+    import wiring3d
+    page = wiring3d.build_html(title, board, list(parts), list(steps))
+    folder = Path(sketch_path).parent if sketch_path else SCRATCH
+    folder.mkdir(parents=True, exist_ok=True)
+    out = folder / (re.sub(r"\W+", "_", title).strip("_").lower() + "_wiring_steps.html")
+    out.write_text(page, encoding="utf-8")
+    _step(f"wrote {out}")
+    try:
+        import webbrowser
+        webbrowser.open(out.as_uri())
+        _step("opened it in the browser")
+    except Exception:
+        pass
+    return f"WIRING STEPS: {out} ({len(steps)} steps, {sum(len(s.get('wires', [])) for s in steps)} wires)"
 
 
 @tool
