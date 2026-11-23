@@ -8,3 +8,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      # mcp 2.x changes the server API; the tests fail on it. Move to it by hand.
+      - dependency-name: mcp
+        update-types: ["version-update:semver-major"]
